@@ -1,11 +1,10 @@
 #!/bin/sh
+# /data is a Docker named volume (see docker-compose.yml). The backend's
+# entrypoint creates and chowns /data/backups, but provision it again here in
+# case the backup container starts before the backend has run.
 set -eu
 
-# On Docker Desktop / WSL2, host bind-mounts often appear as nobody:nobody
-# with restrictive mode bits which prevent even container-root from writing
-# into a pre-existing /data/backups directory. Normalize once at startup.
 mkdir -p /data/backups
-chmod 0777 /data/backups 2>/dev/null || true
 
 while true
 do

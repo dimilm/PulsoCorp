@@ -1,9 +1,9 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String, Table, Text
-from sqlalchemy.dialects.sqlite import JSON
+from sqlalchemy import Boolean, Column, Date, DateTime, Enum, Float, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import utcnow
 from app.models.base import Base
 
 
@@ -39,7 +39,6 @@ class Stock(Base):
 
     market_data = relationship("MarketData", uselist=False, back_populates="stock", cascade="all,delete-orphan")
     metrics = relationship("Metrics", uselist=False, back_populates="stock", cascade="all,delete-orphan")
-    valuation = relationship("Valuation", uselist=False, back_populates="stock", cascade="all,delete-orphan")
     position = relationship("Position", uselist=False, back_populates="stock", cascade="all,delete-orphan")
     tags = relationship("Tag", secondary=stock_tags, lazy="selectin")
 
@@ -76,28 +75,6 @@ class Metrics(Base):
     stock = relationship("Stock", back_populates="metrics")
 
 
-class Valuation(Base):
-    __tablename__ = "valuations"
-
-    isin: Mapped[str] = mapped_column(String(12), ForeignKey("stocks.isin"), primary_key=True)
-    fundamental_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    moat_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    moat_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    fair_value_dcf: Mapped[float | None] = mapped_column(Float, nullable=True)
-    fair_value_nav: Mapped[float | None] = mapped_column(Float, nullable=True)
-    recommendation: Mapped[str | None] = mapped_column(
-        Enum("none", "buy", "risk_buy", name="recommendation"), nullable=True
-    )
-    recommendation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    risk_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    field_sources: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    field_locks: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    last_ai_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    ai_cost_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
-
-    stock = relationship("Stock", back_populates="valuation")
-
-
 class Position(Base):
     __tablename__ = "positions"
 
@@ -105,3 +82,25 @@ class Position(Base):
     tranches: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     stock = relationship("Stock", back_populates="position")
+
+
+class PriceHistory(Base):
+    """Cached OHLC bars per (isin, interval, date).
+
+    The cache is filled on demand by the history endpoint (and TTL-refreshed),
+    so we keep it independent of the main refresh pipeline. The interval is
+    part of the primary key because we store the same date once per granularity
+    (1d / 1wk / 1mo) — the chart picks the appropriate one per range.
+    """
+
+    __tablename__ = "price_history"
+
+    isin: Mapped[str] = mapped_column(String(12), ForeignKey("stocks.isin", ondelete="CASCADE"), primary_key=True)
+    interval: Mapped[str] = mapped_column(String(8), primary_key=True)
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    open: Mapped[float | None] = mapped_column(Float, nullable=True)
+    high: Mapped[float | None] = mapped_column(Float, nullable=True)
+    low: Mapped[float | None] = mapped_column(Float, nullable=True)
+    close: Mapped[float | None] = mapped_column(Float, nullable=True)
+    volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

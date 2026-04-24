@@ -12,10 +12,7 @@ describe("buildStocksParams", () => {
     const params = buildStocksParams(emptyFilters);
     expect(params.query).toBe("");
     expect(params.sector).toBeUndefined();
-    expect(params.recommendation).toBeUndefined();
     expect(params.burggraben).toBeUndefined();
-    expect(params.score_min).toBeUndefined();
-    expect(params.score_max).toBeUndefined();
     expect(params.tags).toBeUndefined();
   });
 
@@ -24,22 +21,12 @@ describe("buildStocksParams", () => {
       ...emptyFilters,
       query: "abc",
       sector: "Tech",
-      onlyBuy: true,
       onlyMoat: true,
-      undervaluedDcf: true,
-      undervaluedNav: true,
-      scoreMin: 5,
-      scoreMax: 9,
       tags: ["growth", "dividend"],
     });
     expect(params.query).toBe("abc");
     expect(params.sector).toBe("Tech");
-    expect(params.recommendation).toBe("buy");
     expect(params.burggraben).toBe(true);
-    expect(params.undervalued_dcf).toBe(true);
-    expect(params.undervalued_nav).toBe(true);
-    expect(params.score_min).toBe(5);
-    expect(params.score_max).toBe(9);
     expect(params.tags).toBe("growth,dividend");
   });
 });
@@ -102,7 +89,7 @@ describe("useWatchlistFilters", () => {
     const { result } = renderHook(() => useWatchlistFilters());
 
     act(() => {
-      result.current.patch({ query: "abc", onlyBuy: true });
+      result.current.patch({ query: "abc", onlyMoat: true });
     });
     act(() => {
       result.current.reset();

@@ -1,12 +1,13 @@
 #!/bin/sh
-# Runs as root inside the container so we can normalize the bind-mounted
-# /data directory (which on Docker Desktop / WSL2 comes in as nobody:nobody
-# with mode bits the unprivileged "app" user cannot write to) before dropping
-# privileges to the unprivileged user that runs uvicorn.
+# /data is a Docker named volume backed by ext4 inside the WSL2/Linux VM, so
+# chown/chmod actually take effect here (unlike a Windows host bind mount,
+# which is why we moved away from `../data:/data`). We still create the dirs
+# defensively in case the volume was just provisioned empty, then drop privs
+# to the unprivileged `app` user that runs uvicorn.
 set -e
 
 mkdir -p /data /data/backups
-chown -R app:app /data 2>/dev/null || true
-chmod 0775 /data /data/backups 2>/dev/null || true
+chown -R app:app /data
+chmod 0775 /data /data/backups
 
 exec gosu app:app "$@"

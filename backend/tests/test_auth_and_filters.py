@@ -22,7 +22,7 @@ def test_refresh_endpoint_works() -> None:
     assert "csrf_token" in body
 
 
-def test_stocks_filter_by_score_and_undervaluation() -> None:
+def test_stocks_filter_by_sector_and_burggraben() -> None:
     client = TestClient(app)
     csrf = _login(client)
     headers = {"X-CSRF-Token": csrf}
@@ -38,17 +38,7 @@ def test_stocks_filter_by_score_and_undervaluation() -> None:
             "tranches": 1,
         },
     )
-    client.patch(
-        "/api/v1/stocks/US0000000001",
-        headers=headers,
-        json={
-            "fundamental_score": 9,
-            "fair_value_dcf": 120,
-            "fair_value_nav": 110,
-            "recommendation": "buy",
-        },
-    )
-    data = client.get("/api/v1/stocks", params={"score_min": 8, "undervalued_dcf": True}).json()
+    data = client.get("/api/v1/stocks", params={"sector": "Tech", "burggraben": True}).json()
     assert any(row["isin"] == "US0000000001" for row in data)
 
 

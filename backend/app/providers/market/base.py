@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date
 
 
 @dataclass
@@ -23,6 +24,16 @@ class MetricsData:
     revenue_growth: float | None = None
 
 
+@dataclass
+class OHLCPoint:
+    date: date
+    open: float | None
+    high: float | None
+    low: float | None
+    close: float | None
+    volume: int | None
+
+
 class MarketProvider:
     async def resolve_symbol(self, *, isin: str, name: str | None = None, yahoo_link: str | None = None) -> str | None:
         return None
@@ -31,4 +42,7 @@ class MarketProvider:
         raise NotImplementedError
 
     async def fetch_metrics(self, symbol: str) -> MetricsData:
+        raise NotImplementedError
+
+    async def fetch_history(self, symbol: str, *, period: str, interval: str) -> list[OHLCPoint]:
         raise NotImplementedError

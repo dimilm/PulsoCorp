@@ -3,24 +3,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 export interface FilterValues {
   query: string;
   sector: string;
-  onlyBuy: boolean;
   onlyMoat: boolean;
-  undervaluedDcf: boolean;
-  undervaluedNav: boolean;
-  scoreMin: number | "";
-  scoreMax: number | "";
   tags: string[];
 }
 
 export const emptyFilters: FilterValues = {
   query: "",
   sector: "",
-  onlyBuy: false,
   onlyMoat: false,
-  undervaluedDcf: false,
-  undervaluedNav: false,
-  scoreMin: "",
-  scoreMax: "",
   tags: [],
 };
 
@@ -28,12 +18,7 @@ export function buildStocksParams(v: FilterValues) {
   return {
     query: v.query,
     sector: v.sector || undefined,
-    recommendation: v.onlyBuy ? "buy" : undefined,
     burggraben: v.onlyMoat ? true : undefined,
-    score_min: v.scoreMin === "" ? undefined : v.scoreMin,
-    score_max: v.scoreMax === "" ? undefined : v.scoreMax,
-    undervalued_dcf: v.undervaluedDcf ? true : undefined,
-    undervalued_nav: v.undervaluedNav ? true : undefined,
     tags: v.tags.length > 0 ? v.tags.join(",") : undefined,
   };
 }

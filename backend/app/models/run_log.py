@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.time import utcnow
 from app.models.base import Base
 
 
@@ -10,7 +11,7 @@ class RunLog(Base):
     __tablename__ = "run_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     duration_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     stocks_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -53,11 +54,6 @@ class RunStockStatus(Base):
     metrics_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     metrics_finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     metrics_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    ai_status: Mapped[str] = mapped_column(String(16), default="not_started", nullable=False)
-    ai_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    ai_finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    ai_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 Index("ix_run_stock_status_run", RunStockStatus.run_id)

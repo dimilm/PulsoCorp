@@ -11,10 +11,7 @@ import { StockForm, StockFormErrors, StockFormValues } from "../components/Stock
 import WatchlistTable from "../components/WatchlistTable";
 import {
   useDeleteStock,
-  useEvaluateStock,
-  usePreviewEvaluate,
   useRefreshStock,
-  useToggleLock,
   useTriggerRefreshAll,
   STOCKS_QUERY_KEY,
 } from "../hooks/useStockMutations";
@@ -26,7 +23,11 @@ import {
 } from "../hooks/useWatchlistFilters";
 import { extractApiError } from "../lib/apiError";
 import { ColorThresholds, defaultThresholds } from "../lib/colorRules";
+import { useCurrentRun, useInvalidateOnRunFinish } from "../lib/runProgress";
 import { Stock, Tag } from "../types";
+
+// Stable reference so React's effect-dep check does not re-run on every render.
+const RUN_INVALIDATE_KEYS = [STOCKS_QUERY_KEY, ["dashboard"]] as const;
 
 const EMPTY_STOCK: StockFormValues = {
   isin: "",
@@ -42,16 +43,6 @@ interface ActiveFilter {
   key: string;
   label: string;
   clear: () => void;
-}
-
-interface AiPreviewState {
-  isin: string;
-  recommendation?: string;
-  fundamental_score?: number | null;
-  fair_value_dcf?: number | null;
-  fair_value_nav?: number | null;
-  recommendation_reason?: string | null;
-  risk_notes?: string | null;
 }
 
 function validateStock(values: StockFormValues, requireIsin: boolean): StockFormErrors {
@@ -88,7 +79,6 @@ export function WatchlistPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [editingIsin, setEditingIsin] = useState<string | null>(null);
-  const [aiPreview, setAiPreview] = useState<AiPreviewState | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createFieldErrors, setCreateFieldErrors] = useState<StockFormErrors>({});
   const [editError, setEditError] = useState<string | null>(null);
@@ -101,11 +91,21 @@ export function WatchlistPage() {
   const [editStock, setEditStock] = useState<StockFormValues>(EMPTY_STOCK);
 
   const refreshMutation = useRefreshStock();
-  const evaluateMutation = useEvaluateStock();
-  const previewMutation = usePreviewEvaluate();
-  const toggleLockMutation = useToggleLock();
   const deleteMutation = useDeleteStock();
   const triggerAllMutation = useTriggerRefreshAll();
+
+  // Single-stock and bulk refreshes both run asynchronously now, so the table
+  // would otherwise show stale data until the user refetched manually. Hook
+  // into the global run-current feed and invalidate the stock cache the
+  // moment any run finishes.
+  useInvalidateOnRunFinish(RUN_INVALIDATE_KEYS);
+
+  // Same flag drives the per-row "Aktualisieren" item and the toolbar
+  // "Alle aktualisieren" item: the backend rejects parallel jobs with
+  // `already_running`, so we disable the entry points instead of letting users
+  // click into a 409.
+  const currentRun = useCurrentRun();
+  const isRunActive = currentRun != null && currentRun.phase !== "finished";
 
   const stocksQuery = useQuery<Stock[]>({
     queryKey: [...STOCKS_QUERY_KEY, filters.debounced],
@@ -158,16 +158,6 @@ export function WatchlistPage() {
 
   async function refresh(isin: string) {
     await refreshMutation.mutateAsync(isin);
-  }
-  async function evaluate(isin: string) {
-    await evaluateMutation.mutateAsync(isin);
-  }
-  async function previewEvaluate(isin: string) {
-    const res = await previewMutation.mutateAsync(isin);
-    setAiPreview(res as AiPreviewState);
-  }
-  async function toggleLock(isin: string, field: string, locked: boolean) {
-    await toggleLockMutation.mutateAsync({ isin, field, locked });
   }
   async function triggerAll() {
     try {
@@ -339,31 +329,8 @@ export function WatchlistPage() {
       list.push({ key: "query", label: `Suche: ${v.query.trim()}`, clear: () => filters.patch({ query: "" }) });
     if (v.sector.trim())
       list.push({ key: "sector", label: `Sektor: ${v.sector.trim()}`, clear: () => filters.patch({ sector: "" }) });
-    if (v.onlyBuy)
-      list.push({ key: "onlyBuy", label: "Nur BUY", clear: () => filters.patch({ onlyBuy: false }) });
     if (v.onlyMoat)
       list.push({ key: "onlyMoat", label: "Burggraben", clear: () => filters.patch({ onlyMoat: false }) });
-    if (v.undervaluedDcf)
-      list.push({
-        key: "dcf",
-        label: "DCF unterbewertet",
-        clear: () => filters.patch({ undervaluedDcf: false }),
-      });
-    if (v.undervaluedNav)
-      list.push({
-        key: "nav",
-        label: "NAV unterbewertet",
-        clear: () => filters.patch({ undervaluedNav: false }),
-      });
-    if (v.scoreMin !== "" || v.scoreMax !== "") {
-      const lo = v.scoreMin === "" ? "*" : v.scoreMin;
-      const hi = v.scoreMax === "" ? "*" : v.scoreMax;
-      list.push({
-        key: "score",
-        label: `Score ${lo}–${hi}`,
-        clear: () => filters.patch({ scoreMin: "", scoreMax: "" }),
-      });
-    }
     for (const t of v.tags) {
       list.push({ key: `tag:${t}`, label: `Tag: ${t}`, clear: () => filters.toggleTag(t) });
     }
@@ -433,12 +400,13 @@ export function WatchlistPage() {
             {(close) => (
               <>
                 <DropdownItem
+                  disabled={isRunActive}
                   onSelect={() => {
                     close();
                     void triggerAll();
                   }}
                 >
-                  Alle aktualisieren
+                  {isRunActive ? "Aktualisierung läuft…" : "Alle aktualisieren"}
                 </DropdownItem>
                 <DropdownItem
                   onSelect={() => {
@@ -589,55 +557,6 @@ export function WatchlistPage() {
                 />
                 Nur Burggraben
               </label>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={v.onlyBuy}
-                  onChange={(e) => filters.patch({ onlyBuy: e.target.checked })}
-                />
-                Nur BUY
-              </label>
-            </div>
-            <div className="filter-group">
-              <h4>Bewertung</h4>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={v.undervaluedDcf}
-                  onChange={(e) => filters.patch({ undervaluedDcf: e.target.checked })}
-                />
-                DCF unterbewertet
-              </label>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={v.undervaluedNav}
-                  onChange={(e) => filters.patch({ undervaluedNav: e.target.checked })}
-                />
-                NAV unterbewertet
-              </label>
-            </div>
-            <div className="filter-group">
-              <h4>Score</h4>
-              <div className="filter-range">
-                <input
-                  type="number"
-                  placeholder="von"
-                  value={v.scoreMin}
-                  onChange={(e) =>
-                    filters.patch({ scoreMin: e.target.value === "" ? "" : Number(e.target.value) })
-                  }
-                />
-                <span className="range-sep">–</span>
-                <input
-                  type="number"
-                  placeholder="bis"
-                  value={v.scoreMax}
-                  onChange={(e) =>
-                    filters.patch({ scoreMax: e.target.value === "" ? "" : Number(e.target.value) })
-                  }
-                />
-              </div>
             </div>
             <div className="filter-group">
               <h4>Tags</h4>
@@ -766,38 +685,10 @@ export function WatchlistPage() {
             thresholds={thresholds}
             onSort={onSort}
             onRefresh={refresh}
-            onEvaluate={evaluate}
-            onAiPreview={previewEvaluate}
-            onToggleLock={toggleLock}
             onEdit={startEdit}
             onDelete={deleteStock}
+            refreshDisabled={isRunActive}
           />
-        </div>
-      )}
-      {aiPreview && (
-        <div className="create-stock-form">
-          <h3>KI Vorschlag fuer {aiPreview.isin}</h3>
-          <p>Empfehlung: {aiPreview.recommendation}</p>
-          <p>Score: {aiPreview.fundamental_score}</p>
-          <p>DCF: {Number(aiPreview.fair_value_dcf ?? 0).toFixed(2)}</p>
-          <p>NAV: {Number(aiPreview.fair_value_nav ?? 0).toFixed(2)}</p>
-          <p>Grund: {aiPreview.recommendation_reason || "-"}</p>
-          <p>Risiken: {aiPreview.risk_notes || "-"}</p>
-          <div className="form-actions">
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={async () => {
-                await evaluate(aiPreview.isin);
-                setAiPreview(null);
-              }}
-            >
-              Übernehmen
-            </button>
-            <button type="button" className="btn-secondary" onClick={() => setAiPreview(null)}>
-              Verwerfen
-            </button>
-          </div>
         </div>
       )}
     </div>

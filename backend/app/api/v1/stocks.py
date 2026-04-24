@@ -3,11 +3,18 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import csrf_guard, get_current_user, require_admin
 from app.db.session import get_db
-from app.models.stock import Stock, Valuation
+from app.models.stock import Stock
 from app.providers.market.yfinance_provider import YFinanceProvider
-from app.schemas.stock import LockRequest, StockCreate, StockOut, StockUpdate
-from app.services.market_service import MarketService
-from app.services.stock_service import create_stock, list_stocks, to_stock_out, update_stock
+from app.schemas.stock import HistoryResponse, StockCreate, StockOut, StockUpdate
+from app.services.history_service import HistoryService
+from app.services.scheduler_service import start_single_refresh_background
+from app.services.stock_service import (
+    create_stock,
+    find_similar_stocks,
+    list_stocks,
+    to_stock_out,
+    update_stock,
+)
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
@@ -16,12 +23,7 @@ router = APIRouter(prefix="/stocks", tags=["stocks"])
 def get_stocks(
     query: str | None = Query(default=None),
     sector: str | None = Query(default=None),
-    recommendation: str | None = Query(default=None),
     burggraben: bool | None = Query(default=None),
-    score_min: int | None = Query(default=None),
-    score_max: int | None = Query(default=None),
-    undervalued_dcf: bool | None = Query(default=None),
-    undervalued_nav: bool | None = Query(default=None),
     tags: str | None = Query(default=None),
     tags_mode: str = Query(default="any", pattern="^(any|all)$"),
     _: dict = Depends(get_current_user),
@@ -32,12 +34,7 @@ def get_stocks(
         db,
         query=query,
         sector=sector,
-        recommendation=recommendation,
         burggraben=burggraben,
-        score_min=score_min,
-        score_max=score_max,
-        undervalued_dcf=undervalued_dcf,
-        undervalued_nav=undervalued_nav,
         tags=tag_list,
         tags_mode=tags_mode,
     )
@@ -77,27 +74,42 @@ def delete_stock(isin: str, _: dict = Depends(require_admin), db: Session = Depe
 
 
 @router.post("/{isin}/refresh", dependencies=[Depends(csrf_guard)])
-async def refresh_stock(isin: str, _: dict = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+def refresh_stock(isin: str, _: dict = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Kick off a background market-data refresh for a single stock.
+
+    Returns immediately with the new run id so the UI can poll
+    `/run-logs/current` and `/run-logs/{run_id}/stocks` for live progress
+    (same plumbing as the bulk refresh).
+    """
+    isin_upper = isin.upper()
+    if not db.get(Stock, isin_upper):
+        raise HTTPException(status_code=404, detail="Stock not found")
+    return start_single_refresh_background(isin_upper)
+
+
+@router.get("/{isin}/history", response_model=HistoryResponse)
+async def get_stock_history(
+    isin: str,
+    range: str = Query(default="1y", pattern="^(1m|6m|1y|5y|max)$"),
+    _: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
     stock = db.get(Stock, isin.upper())
     if not stock:
         raise HTTPException(status_code=404, detail="Stock not found")
-    service = MarketService(YFinanceProvider())
-    try:
-        await service.refresh_stock(db, stock)
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Refresh failed: {exc}") from exc
-    return {"ok": True}
+    service = HistoryService(YFinanceProvider())
+    result = await service.get_history(db, stock, range)
+    return {"isin": stock.isin, **result}
 
 
-@router.post("/{isin}/lock", dependencies=[Depends(csrf_guard)])
-def lock_fields(
-    isin: str, payload: LockRequest, _: dict = Depends(get_current_user), db: Session = Depends(get_db)
-) -> dict:
-    valuation = db.get(Valuation, isin.upper()) or Valuation(isin=isin.upper(), field_sources={}, field_locks={})
-    for field_name in payload.field_names:
-        valuation.field_locks[field_name] = payload.locked
-    db.add(valuation)
-    db.commit()
-    return {"ok": True, "locks": valuation.field_locks}
+@router.get("/{isin}/similar", response_model=list[StockOut])
+def get_stock_similar(
+    isin: str,
+    limit: int = Query(default=5, ge=1, le=20),
+    _: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    stock = db.get(Stock, isin.upper())
+    if not stock:
+        raise HTTPException(status_code=404, detail="Stock not found")
+    return find_similar_stocks(db, stock, limit)

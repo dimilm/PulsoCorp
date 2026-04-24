@@ -1,9 +1,19 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { Spinner } from "../components/Spinner";
-import { useTriggerRefreshAll } from "../hooks/useStockMutations";
+import {
+  useCancelRefreshAll,
+  useTriggerRefreshAll,
+} from "../hooks/useStockMutations";
+import {
+  nextPollInterval,
+  phaseLabel,
+  runStatusLabel,
+  STEP_STATUS_LABEL,
+} from "../lib/runProgress";
 import {
   RunStep,
   RunStockStatus,
@@ -11,32 +21,14 @@ import {
   StepStatus,
 } from "../types/run";
 
-const STEP_LABELS: Record<keyof Pick<RunStockStatus, "symbol" | "quote" | "metrics" | "ai">, string> = {
+const STEP_LABELS: Record<keyof Pick<RunStockStatus, "symbol" | "quote" | "metrics">, string> = {
   symbol: "Symbol",
   quote: "Kurs",
   metrics: "Kennzahlen",
-  ai: "KI",
 };
-
-const STATUS_LABEL: Record<StepStatus, string> = {
-  not_started: "wartet",
-  running: "läuft",
-  done: "fertig",
-  error: "Fehler",
-};
-
-// Polling intervals in milliseconds. We start aggressively while the run is
-// hot (every 1.5s) and back off for long-running jobs so we are not hitting
-// the API hundreds of times. Capped at 8s so the UI still feels responsive.
-const POLL_INTERVALS_MS = [1500, 1500, 3000, 3000, 5000, 8000];
-
-function nextPollInterval(tickCount: number): number {
-  const idx = Math.min(tickCount, POLL_INTERVALS_MS.length - 1);
-  return POLL_INTERVALS_MS[idx];
-}
 
 function StepBadge({ status }: { status: StepStatus }) {
-  return <span className={`run-badge run-badge-${status}`}>{STATUS_LABEL[status]}</span>;
+  return <span className={`run-badge run-badge-${status}`}>{STEP_STATUS_LABEL[status]}</span>;
 }
 
 function StepCell({ step, label }: { step: RunStep; label: string }) {
@@ -71,34 +63,6 @@ function liveDuration(run: RunSummary): number {
   if (Number.isNaN(startedMs)) return run.duration_seconds || 0;
   const endMs = run.finished_at ? new Date(run.finished_at).getTime() : Date.now();
   return Math.max(0, Math.round((endMs - startedMs) / 1000));
-}
-
-function phaseLabel(phase: string | null | undefined): string {
-  switch (phase) {
-    case "queued":
-      return "Wird vorbereitet";
-    case "running":
-      return "Läuft";
-    case "finished":
-      return "Abgeschlossen";
-    default:
-      return phase ?? "-";
-  }
-}
-
-function statusLabel(status: string | null | undefined): string {
-  switch (status) {
-    case "ok":
-      return "OK";
-    case "skipped":
-      return "Übersprungen";
-    case "partial_error":
-      return "Teilweise Fehler";
-    case "error":
-      return "Fehler";
-    default:
-      return status ?? "-";
-  }
 }
 
 function formatStockDuration(s: RunStockStatus): string {
@@ -158,8 +122,11 @@ function FilterPill({
 export function RunsPage() {
   const queryClient = useQueryClient();
   const triggerRefresh = useTriggerRefreshAll();
+  const cancelRefresh = useCancelRefreshAll();
   const [showHistory, setShowHistory] = useState(false);
-  const [filter, setFilter] = useState<"all" | "running" | "error" | "done" | "not_started">("all");
+  const [filter, setFilter] = useState<
+    "all" | "running" | "error" | "done" | "not_started" | "cancelled"
+  >("all");
 
   // Track how often we've polled the current run so we can back off the
   // refetch interval for long-running jobs.
@@ -209,13 +176,23 @@ export function RunsPage() {
     if (lastPhaseRef.current !== "finished" && current.phase === "finished") {
       queryClient.invalidateQueries({ queryKey: ["stocks"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      // The per-stock backoff stops the moment phase=finished, so the last
+      // poll usually still shows steps as `running`/`not_started`. Force a
+      // final refetch so the UI matches what a manual reload would show.
+      queryClient.invalidateQueries({ queryKey: ["run-stocks", current.id] });
     }
     lastPhaseRef.current = current.phase;
   }, [current?.phase, current, queryClient]);
 
   const stocks = stocksQuery.data ?? [];
   const counters = useMemo(() => {
-    const c: Record<StepStatus, number> = { not_started: 0, running: 0, done: 0, error: 0 };
+    const c: Record<StepStatus, number> = {
+      not_started: 0,
+      running: 0,
+      done: 0,
+      error: 0,
+      cancelled: 0,
+    };
     for (const s of stocks) c[s.overall_status as StepStatus] = (c[s.overall_status as StepStatus] ?? 0) + 1;
     return c;
   }, [stocks]);
@@ -256,6 +233,47 @@ export function RunsPage() {
     );
   }
 
+  // Single-stock refreshes share the same RunLog plumbing as the bulk job, but
+  // their progress belongs on the stock detail page – here we only point at it
+  // so this view stays focused on the bulk pipeline.
+  if (current.stocks_total === 1) {
+    const singleStock = stocks[0];
+    return (
+      <div className="page">
+        <header className="page-header">
+          <div className="page-header-title">
+            <h2>Laufstatus</h2>
+          </div>
+          <div className="page-header-actions">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => triggerRefresh.mutate()}
+              disabled={isRunning || triggerRefresh.isPending}
+              title={isRunning ? "Es läuft bereits ein Update" : "Jetzt aktualisieren"}
+            >
+              {isRunning ? "Läuft…" : "Jetzt aktualisieren"}
+            </button>
+          </div>
+        </header>
+        <p>
+          {isRunning ? "Aktuell läuft ein Einzel-Refresh" : "Letzter Lauf war ein Einzel-Refresh"}
+          {singleStock ? (
+            <>
+              {" für "}
+              <Link to={`/stocks/${singleStock.isin}`} className="breadcrumb-link">
+                {singleStock.stock_name || singleStock.isin}
+              </Link>
+              {". Fortschritt und Ergebnis stehen auf der Detailseite."}
+            </>
+          ) : (
+            ". Fortschritt und Ergebnis stehen auf der Detailseite des Unternehmens."
+          )}
+        </p>
+      </div>
+    );
+  }
+
   const total = current.stocks_total || 0;
   const done = current.stocks_done || 0;
   const progressPct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
@@ -280,6 +298,17 @@ export function RunsPage() {
           >
             {showHistory ? "Historie ausblenden" : "Historie anzeigen"}
           </button>
+          {isRunning && (
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => cancelRefresh.mutate()}
+              disabled={cancelRefresh.isPending}
+              title="Den laufenden Update-Job abbrechen"
+            >
+              {cancelRefresh.isPending ? "Wird abgebrochen…" : "Lauf abbrechen"}
+            </button>
+          )}
           <button
             type="button"
             className="btn-primary"
@@ -295,7 +324,7 @@ export function RunsPage() {
       <div className="run-summary-card">
         <div className="run-summary-grid">
           <RunSummaryItem label="Phase" value={phaseLabel(current.phase)} accent={current.phase} />
-          <RunSummaryItem label="Status" value={statusLabel(current.status)} accent={current.status} />
+          <RunSummaryItem label="Status" value={runStatusLabel(current.status)} accent={current.status} />
           <RunSummaryItem label="Start" value={formatDateTime(current.started_at)} />
           <RunSummaryItem
             label={current.phase === "finished" ? "Ende" : "Bisher"}
@@ -355,6 +384,16 @@ export function RunsPage() {
         >
           Wartet
         </FilterPill>
+        {counters.cancelled > 0 && (
+          <FilterPill
+            active={filter === "cancelled"}
+            onClick={() => setFilter("cancelled")}
+            count={counters.cancelled}
+            accent="cancelled"
+          >
+            Abgebrochen
+          </FilterPill>
+        )}
       </div>
 
       <div className="run-table-wrapper">
@@ -369,7 +408,6 @@ export function RunsPage() {
                 <th>Symbol</th>
                 <th>Kurs</th>
                 <th>Kennzahlen</th>
-                <th>KI</th>
                 <th>Dauer</th>
               </tr>
             </thead>
@@ -394,9 +432,6 @@ export function RunsPage() {
                   </td>
                   <td>
                     <StepCell step={s.metrics} label={STEP_LABELS.metrics} />
-                  </td>
-                  <td>
-                    <StepCell step={s.ai} label={STEP_LABELS.ai} />
                   </td>
                   <td className="run-duration">{formatStockDuration(s)}</td>
                 </tr>
@@ -429,7 +464,7 @@ export function RunsPage() {
                     <td>#{r.id}</td>
                     <td>{formatDateTime(r.started_at)}</td>
                     <td>{phaseLabel(r.phase)}</td>
-                    <td>{statusLabel(r.status)}</td>
+                    <td>{runStatusLabel(r.status)}</td>
                     <td>{formatDuration(r.duration_seconds)}</td>
                     <td>
                       {r.stocks_success} / {r.stocks_error} / {r.stocks_total}

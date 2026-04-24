@@ -87,10 +87,4 @@ def _to_status_out(row: RunStockStatus, name_lookup: dict[str, str]) -> RunStock
             finished_at=row.metrics_finished_at,
             error=row.metrics_error,
         ),
-        ai=RunStockStepOut(
-            status=row.ai_status,
-            started_at=row.ai_started_at,
-            finished_at=row.ai_finished_at,
-            error=row.ai_error,
-        ),
     )

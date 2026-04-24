@@ -1,71 +1,85 @@
+"""OpenAI Chat Completions provider.
+
+Generic LLM client – the agent layer is responsible for prompts. Failures
+propagate so the calling agent can persist a `status="error"` AIRun row.
+"""
+from __future__ import annotations
+
 import json
+from typing import Any
 
 import httpx
 
-from app.providers.ai.base import AIEvaluation, AIProvider
+from app.providers.ai.base import AIProvider, CompletionResult
+from app.providers.ai.pricing import estimate_cost
 
 
 class OpenAIProvider(AIProvider):
+    name = "openai"
+
     def __init__(self, endpoint: str, model: str, api_key: str | None = None) -> None:
         self.endpoint = endpoint
         self.model = model
         self.api_key = api_key
 
-    def _fallback(self, payload: dict) -> AIEvaluation:
-        score = 7 if payload.get("burggraben") else 5
-        discount = payload.get("dcf_discount_pct") or 0
-        recommendation = "buy" if discount < 0 else "risk_buy"
-        price = payload.get("current_price") or 0
-        return AIEvaluation(
-            fundamental_score=score,
-            moat_score=score,
-            moat_text="Heuristischer Score (kein LLM-Aufruf).",
-            fair_value_dcf=price * 1.12,
-            fair_value_nav=price * 1.06,
-            recommendation=recommendation,
-            recommendation_reason="Heuristische Empfehlung basierend auf Bewertungsabschlag.",
-            risk_notes="Fallback aktiv, da Providerantwort nicht genutzt werden konnte.",
-            estimated_cost=0.0,
-            is_fallback=True,
-        )
-
-    async def evaluate(self, payload: dict) -> AIEvaluation:
+    def _headers(self) -> dict[str, str]:
         if not self.api_key:
-            return self._fallback(payload)
-        prompt = (
-            "Du bist ein Aktienanalyse-Assistent. Erstelle nur JSON mit den Feldern: "
-            "fundamental_score (0-10 int), moat_score (0-10 int), moat_text (string), "
-            "fair_value_dcf (number), fair_value_nav (number), recommendation ('buy'|'risk_buy'|'none'), "
-            "recommendation_reason (string), risk_notes (string). "
-            f"Eingabedaten: {json.dumps(payload, ensure_ascii=True)}"
-        )
+            raise ValueError("Kein API-Key hinterlegt")
+        return {"Authorization": f"Bearer {self.api_key}"}
+
+    async def ping(self) -> None:
         body = {
             "model": self.model,
-            "temperature": 0.2,
-            "response_format": {"type": "json_object"},
+            "max_tokens": 1,
+            "temperature": 0,
+            "messages": [{"role": "user", "content": "ping"}],
+        }
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(self.endpoint, headers=self._headers(), json=body)
+            response.raise_for_status()
+
+    async def complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        json_schema: dict[str, Any] | None = None,
+        temperature: float = 0.2,
+    ) -> CompletionResult:
+        body: dict[str, Any] = {
+            "model": self.model,
+            "temperature": temperature,
             "messages": [
-                {"role": "system", "content": "Antworte strikt als valides JSON-Objekt."},
-                {"role": "user", "content": prompt},
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
             ],
         }
-        headers = {"Authorization": f"Bearer {self.api_key}"}
-        try:
-            async with httpx.AsyncClient(timeout=45) as client:
-                response = await client.post(self.endpoint, headers=headers, json=body)
-                response.raise_for_status()
-                raw = response.json()["choices"][0]["message"]["content"]
-            parsed = json.loads(raw)
-            return AIEvaluation(
-                fundamental_score=int(parsed.get("fundamental_score", 5)),
-                moat_score=int(parsed.get("moat_score", 5)),
-                moat_text=str(parsed.get("moat_text", "")),
-                fair_value_dcf=float(parsed.get("fair_value_dcf") or 0),
-                fair_value_nav=float(parsed.get("fair_value_nav") or 0),
-                recommendation=str(parsed.get("recommendation", "none")),
-                recommendation_reason=str(parsed.get("recommendation_reason", "")),
-                risk_notes=str(parsed.get("risk_notes", "")),
-                estimated_cost=0.0,
-                is_fallback=False,
-            )
-        except Exception:
-            return self._fallback(payload)
+        if json_schema is not None:
+            # We use `json_object` rather than `json_schema` so the same code
+            # path works against legacy and self-hosted OpenAI-compatible APIs.
+            body["response_format"] = {"type": "json_object"}
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(self.endpoint, headers=self._headers(), json=body)
+            response.raise_for_status()
+            data = response.json()
+
+        raw_text = data["choices"][0]["message"]["content"]
+        usage = data.get("usage") or {}
+        input_tokens = usage.get("prompt_tokens")
+        output_tokens = usage.get("completion_tokens")
+
+        if json_schema is not None:
+            try:
+                parsed = json.loads(raw_text)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Provider lieferte kein valides JSON: {exc}") from exc
+        else:
+            parsed = {"text": raw_text}
+
+        return CompletionResult(
+            parsed=parsed,
+            raw_text=raw_text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            estimated_cost=estimate_cost(self.name, self.model, input_tokens, output_tokens),
+        )

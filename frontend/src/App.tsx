@@ -8,6 +8,8 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { StockDetailPage } from "./pages/StockDetailPage";
+import { StockEditPage } from "./pages/StockEditPage";
 import { WatchlistPage } from "./pages/WatchlistPage";
 
 export default function App() {
@@ -38,6 +40,22 @@ export default function App() {
           element={
             <Protected user={user}>
               <WatchlistPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/stocks/:isin"
+          element={
+            <Protected user={user}>
+              <StockDetailPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/stocks/:isin/edit"
+          element={
+            <Protected user={user}>
+              <StockEditPage />
             </Protected>
           }
         />

@@ -9,6 +9,9 @@ class SettingsOut(BaseModel):
     ai_endpoint: str | None
     ai_model: str
     ai_refresh_interval: str
+    # Derived flag: lets the UI render "Schlüssel hinterlegt" without the key
+    # itself ever leaving the backend. Never stored on the model row.
+    ai_api_key_set: bool = False
 
 
 class SettingsUpdate(BaseModel):

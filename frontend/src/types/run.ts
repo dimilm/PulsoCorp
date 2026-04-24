@@ -1,4 +1,4 @@
-export type StepStatus = "not_started" | "running" | "done" | "error";
+export type StepStatus = "not_started" | "running" | "done" | "error" | "cancelled";
 
 export interface RunStep {
   status: StepStatus;
@@ -17,7 +17,6 @@ export interface RunStockStatus {
   symbol: RunStep;
   quote: RunStep;
   metrics: RunStep;
-  ai: RunStep;
 }
 
 export interface RunSummary {

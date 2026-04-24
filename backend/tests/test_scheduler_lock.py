@@ -1,10 +1,11 @@
 """Tests for the JobLock TTL/heartbeat semantics in scheduler_service."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
+from app.core.time import utcnow
 from app.db.session import SessionLocal
 from app.models.run_log import JobLock, RunLog
 from app.services import scheduler_service as ss
@@ -41,7 +42,7 @@ def _set_lock(**fields) -> None:
 
 
 def test_is_lock_stale_when_unlocked() -> None:
-    lock = JobLock(name="x", locked=False, heartbeat_at=datetime.utcnow())
+    lock = JobLock(name="x", locked=False, heartbeat_at=utcnow())
     assert ss._is_lock_stale(lock) is False
 
 
@@ -52,13 +53,13 @@ def test_is_lock_stale_without_heartbeat() -> None:
 
 
 def test_is_lock_stale_when_heartbeat_too_old() -> None:
-    too_old = datetime.utcnow() - ss._LOCK_HEARTBEAT_TTL - timedelta(seconds=10)
+    too_old = utcnow() - ss._LOCK_HEARTBEAT_TTL - timedelta(seconds=10)
     lock = JobLock(name="x", locked=True, heartbeat_at=too_old)
     assert ss._is_lock_stale(lock) is True
 
 
 def test_is_lock_stale_when_heartbeat_fresh() -> None:
-    lock = JobLock(name="x", locked=True, heartbeat_at=datetime.utcnow())
+    lock = JobLock(name="x", locked=True, heartbeat_at=utcnow())
     assert ss._is_lock_stale(lock) is False
 
 
@@ -66,8 +67,8 @@ def test_heartbeat_only_renews_for_owner() -> None:
     _set_lock(
         locked=True,
         owner="owner-a",
-        acquired_at=datetime.utcnow() - timedelta(minutes=1),
-        heartbeat_at=datetime.utcnow() - timedelta(minutes=1),
+        acquired_at=utcnow() - timedelta(minutes=1),
+        heartbeat_at=utcnow() - timedelta(minutes=1),
     )
 
     db = SessionLocal()
@@ -87,12 +88,12 @@ def test_heartbeat_only_renews_for_owner() -> None:
 
 
 def test_recover_stale_locks_resets_lock_and_marks_runs() -> None:
-    too_old = datetime.utcnow() - ss._LOCK_HEARTBEAT_TTL - timedelta(minutes=1)
+    too_old = utcnow() - ss._LOCK_HEARTBEAT_TTL - timedelta(minutes=1)
     _set_lock(locked=True, owner="dead", acquired_at=too_old, heartbeat_at=too_old)
 
     db = SessionLocal()
     try:
-        run = RunLog(phase="running", started_at=datetime.utcnow())
+        run = RunLog(phase="running", started_at=utcnow())
         db.add(run)
         db.commit()
         run_id = run.id
@@ -121,8 +122,8 @@ def test_recover_stale_locks_keeps_fresh_lock() -> None:
     _set_lock(
         locked=True,
         owner="alive",
-        acquired_at=datetime.utcnow(),
-        heartbeat_at=datetime.utcnow(),
+        acquired_at=utcnow(),
+        heartbeat_at=utcnow(),
     )
     ss.recover_stale_locks()
 

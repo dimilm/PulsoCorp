@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 import yfinance as yf
 
-from app.providers.market.base import MarketProvider, MetricsData, QuoteData
+from app.providers.market.base import MarketProvider, MetricsData, OHLCPoint, QuoteData
 
 
 class YFinanceProvider(MarketProvider):
@@ -39,6 +39,39 @@ class YFinanceProvider(MarketProvider):
         if current and prev_close:
             change_pct = ((current - prev_close) / prev_close) * 100
         return QuoteData(current_price=current, day_change_pct=change_pct, currency=info.get("currency"))
+
+    async def fetch_history(self, symbol: str, *, period: str, interval: str) -> list[OHLCPoint]:
+        """Return OHLC bars for the requested period/interval as plain dataclasses.
+
+        Empty list on any failure — callers must treat history as best-effort
+        because yfinance occasionally rate-limits or returns gaps. We strip
+        timezone info so downstream comparisons stay simple.
+        """
+        ticker = await asyncio.to_thread(yf.Ticker, symbol)
+        try:
+            hist = await asyncio.to_thread(
+                lambda: ticker.history(period=period, interval=interval, auto_adjust=False)
+            )
+        except Exception:
+            return []
+        if hist is None or getattr(hist, "empty", True):
+            return []
+
+        points: list[OHLCPoint] = []
+        for ts, row in hist.iterrows():
+            ts_naive = _to_naive(ts)
+            d = ts_naive.date() if hasattr(ts_naive, "date") else ts_naive
+            points.append(
+                OHLCPoint(
+                    date=d,
+                    open=_safe_float(row.get("Open") if hasattr(row, "get") else row["Open"]),
+                    high=_safe_float(row.get("High") if hasattr(row, "get") else row["High"]),
+                    low=_safe_float(row.get("Low") if hasattr(row, "get") else row["Low"]),
+                    close=_safe_float(row.get("Close") if hasattr(row, "get") else row["Close"]),
+                    volume=_safe_int(row.get("Volume") if hasattr(row, "get") else row["Volume"]),
+                )
+            )
+        return points
 
     async def fetch_metrics(self, symbol: str) -> MetricsData:
         ticker = await asyncio.to_thread(yf.Ticker, symbol)
@@ -98,7 +131,10 @@ class YFinanceProvider(MarketProvider):
             for row_label in ("Diluted EPS", "Basic EPS"):
                 if row_label in stmt.index:
                     series = stmt.loc[row_label].dropna()
-                    eps_series = [(idx, float(val) * (scale if scale else 1)) for idx, val in series.items()]
+                    eps_series = [
+                        (_to_naive(idx), float(val) * (scale if scale else 1))
+                        for idx, val in series.items()
+                    ]
                     break
             if eps_series:
                 break
@@ -118,10 +154,51 @@ class YFinanceProvider(MarketProvider):
         eps_sorted = sorted(eps_series, key=lambda item: item[0])
         pes: list[float] = []
         for ts, close in hist["Close"].dropna().items():
-            applicable = [eps for eps_ts, eps in eps_sorted if eps_ts <= ts and eps not in (0, None)]
+            # yfinance returns tz-aware timestamps for `history`, but EPS
+            # statements ship tz-naive — strip tz on both sides to compare.
+            ts_naive = _to_naive(ts)
+            applicable = [
+                eps for eps_ts, eps in eps_sorted if eps_ts <= ts_naive and eps not in (0, None)
+            ]
             if not applicable:
                 continue
             pes.append(float(close) / applicable[-1])
         if not pes:
             return None, None, None
         return min(pes), max(pes), sum(pes) / len(pes)
+
+
+def _to_naive(value):
+    """Drop timezone info so tz-aware and tz-naive timestamps can be compared."""
+    if getattr(value, "tzinfo", None) is None:
+        return value
+    tz_localize = getattr(value, "tz_localize", None)
+    if callable(tz_localize):
+        try:
+            return tz_localize(None)
+        except (TypeError, ValueError):
+            pass
+    try:
+        return value.replace(tzinfo=None)
+    except (TypeError, AttributeError):
+        return value
+
+
+def _safe_float(value) -> float | None:
+    """Convert pandas/numpy scalars to plain float, treating NaN as None."""
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if f != f:  # NaN check without importing math
+        return None
+    return f
+
+
+def _safe_int(value) -> int | None:
+    f = _safe_float(value)
+    if f is None:
+        return None
+    return int(f)

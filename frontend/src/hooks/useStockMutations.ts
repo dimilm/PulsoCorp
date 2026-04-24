@@ -4,56 +4,36 @@ import { api } from "../api/client";
 
 export const STOCKS_QUERY_KEY = ["stocks"] as const;
 
-function useInvalidateStocks() {
-  const qc = useQueryClient();
-  return async () => {
-    await qc.invalidateQueries({ queryKey: STOCKS_QUERY_KEY });
-    await qc.invalidateQueries({ queryKey: ["tags"] });
-  };
+export interface RefreshKickoff {
+  run_id: number | null;
+  phase: string | null;
+  status: string;
 }
 
+// The single-stock refresh now runs on the same background worker as the bulk
+// job. The mutation returns the new run id immediately so the caller can poll
+// `/run-logs/current` for live progress and a real success/failure result.
+// Stock list invalidation happens on run-finish (see RunsPage useEffect),
+// so we only refresh the run summary cache here.
 export function useRefreshStock() {
-  const invalidate = useInvalidateStocks();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (isin: string) => api.post(`/stocks/${isin}/refresh`),
-    onSuccess: invalidate,
-  });
-}
-
-export function useEvaluateStock() {
-  const invalidate = useInvalidateStocks();
-  return useMutation({
-    mutationFn: (isin: string) => api.post(`/ai/evaluate/${isin}?apply=true`),
-    onSuccess: invalidate,
-  });
-}
-
-export function usePreviewEvaluate() {
-  return useMutation({
-    mutationFn: async (isin: string) => {
-      const res = await api.post(`/ai/evaluate/${isin}?apply=false`);
-      return { isin, ...res.data } as Record<string, unknown> & { isin: string };
+    mutationFn: async (isin: string): Promise<RefreshKickoff> => {
+      const res = await api.post(`/stocks/${isin}/refresh`);
+      return res.data as RefreshKickoff;
     },
-  });
-}
-
-export function useToggleLock() {
-  const invalidate = useInvalidateStocks();
-  return useMutation({
-    mutationFn: (vars: { isin: string; field: string; locked: boolean }) =>
-      api.post(`/stocks/${vars.isin}/lock`, {
-        field_names: [vars.field],
-        locked: vars.locked,
-      }),
-    onSuccess: invalidate,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["run-current"] }),
   });
 }
 
 export function useDeleteStock() {
-  const invalidate = useInvalidateStocks();
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (isin: string) => api.delete(`/stocks/${isin}`),
-    onSuccess: invalidate,
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: STOCKS_QUERY_KEY });
+      await qc.invalidateQueries({ queryKey: ["tags"] });
+    },
   });
 }
 
@@ -61,6 +41,17 @@ export function useTriggerRefreshAll() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.post("/jobs/refresh-all"),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["run-current"] }),
+  });
+}
+
+export function useCancelRefreshAll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.post("/jobs/refresh-all/cancel");
+      return res.data as { cancelled: boolean; run_id?: number; reason?: string };
+    },
     onSettled: () => qc.invalidateQueries({ queryKey: ["run-current"] }),
   });
 }

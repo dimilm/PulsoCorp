@@ -1,5 +1,3 @@
-export type Recommendation = "none" | "buy" | "risk_buy";
-
 export interface Stock {
   isin: string;
   name: string;
@@ -7,16 +5,16 @@ export interface Stock {
   currency: string | null;
   burggraben: boolean;
   reasoning: string | null;
+  ticker_override?: string | null;
+  link_yahoo?: string | null;
+  link_finanzen?: string | null;
+  link_onvista_chart?: string | null;
+  link_onvista_fundamental?: string | null;
   tranches: number;
   current_price: number | null;
   day_change_pct: number | null;
   last_updated: string | null;
   last_status: string | null;
-  recommendation: Recommendation;
-  recommendation_reason?: string | null;
-  fundamental_score: number | null;
-  moat_score: number | null;
-  moat_text?: string | null;
   pe_forward: number | null;
   pe_min_5y: number | null;
   pe_max_5y: number | null;
@@ -29,10 +27,6 @@ export interface Stock {
   debt_ratio: number | null;
   revenue_growth: number | null;
   missing_metrics: string[];
-  field_sources: Record<string, string>;
-  field_locks: Record<string, boolean>;
-  dcf_discount_pct: number | null;
-  nav_discount_pct: number | null;
   analyst_target_distance_pct: number | null;
   invested_capital_eur: number;
   tags: string[];
@@ -42,4 +36,47 @@ export interface Tag {
   id: number;
   name: string;
   count: number;
+}
+
+export type HistoryRange = "1m" | "6m" | "1y" | "5y" | "max";
+
+export interface HistoryPoint {
+  date: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+}
+
+export interface HistoryResponse {
+  isin: string;
+  range: HistoryRange;
+  interval: string;
+  points: HistoryPoint[];
+  fetched_at: string | null;
+}
+
+export interface AgentInfo {
+  id: string;
+  name: string;
+  description: string;
+  output_schema: Record<string, unknown>;
+}
+
+export type AIRunStatus = "done" | "error" | "running";
+
+export interface AIRun {
+  id: number;
+  isin: string;
+  agent_id: string;
+  created_at: string;
+  provider: string;
+  model: string;
+  status: AIRunStatus;
+  input_payload: Record<string, unknown>;
+  result_payload: Record<string, unknown> | null;
+  error_text: string | null;
+  cost_estimate: number | null;
+  duration_ms: number | null;
 }

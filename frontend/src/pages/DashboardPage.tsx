@@ -19,7 +19,6 @@ interface DashboardData {
   } | null;
   winners?: Stock[];
   losers?: Stock[];
-  buy_candidates?: Stock[];
 }
 
 export function DashboardPage() {
@@ -66,12 +65,6 @@ export function DashboardPage() {
           <li key={`l-${s.isin}`}>
             {s.name} ({Number(s.day_change_pct ?? 0).toFixed(2)} %)
           </li>
-        ))}
-      </ul>
-      <h3>Kaufkandidaten</h3>
-      <ul>
-        {data.buy_candidates?.map((s) => (
-          <li key={s.isin}>{s.name}</li>
         ))}
       </ul>
     </div>

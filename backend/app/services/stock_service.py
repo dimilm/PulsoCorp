@@ -3,14 +3,12 @@ from __future__ import annotations
 import csv
 import io
 import re
-from datetime import datetime
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.models.stock import MarketData, Metrics, Position, Stock, Tag, Valuation, stock_tags
+from app.models.stock import MarketData, Metrics, Position, Stock, Tag, stock_tags
 from app.schemas.stock import StockCreate, StockUpdate
-from app.services.valuation_service import calc_discount_pct, calc_target_distance_pct
 
 ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{10}$")
 
@@ -22,7 +20,6 @@ CSV_COL_REASONING = 22
 CSV_COL_TRANCHE_BURGGRABEN = 24
 CSV_COL_TRANCHE_INVEST = 25
 CSV_COL_TRANCHE_SUM = 26
-CSV_COL_RECOMMENDATION = 27
 CSV_COL_YAHOO_LINK = 8
 CSV_COL_FINANZEN_LINK = 9
 CSV_COL_ONVISTA_CHART_LINK = 55
@@ -66,12 +63,7 @@ def list_stocks(
     db: Session,
     query: str | None = None,
     sector: str | None = None,
-    recommendation: str | None = None,
     burggraben: bool | None = None,
-    score_min: int | None = None,
-    score_max: int | None = None,
-    undervalued_dcf: bool | None = None,
-    undervalued_nav: bool | None = None,
     tags: list[str] | None = None,
     tags_mode: str = "any",
 ) -> list[dict]:
@@ -83,12 +75,6 @@ def list_stocks(
         q = q.filter(Stock.sector == sector)
     if burggraben is not None:
         q = q.filter(Stock.burggraben == burggraben)
-    if recommendation:
-        q = q.join(Valuation, Valuation.isin == Stock.isin).filter(Valuation.recommendation == recommendation)
-    if score_min is not None:
-        q = q.join(Valuation, Valuation.isin == Stock.isin).filter(Valuation.fundamental_score >= score_min)
-    if score_max is not None:
-        q = q.join(Valuation, Valuation.isin == Stock.isin).filter(Valuation.fundamental_score <= score_max)
 
     normalized_tags: list[str] = []
     if tags:
@@ -109,19 +95,7 @@ def list_stocks(
         else:
             q = q.distinct()
 
-    rows = []
-    for stock in q.order_by(Stock.name.asc()).all():
-        item = to_stock_out(db, stock)
-        if undervalued_dcf is not None:
-            is_undervalued_dcf = (item.get("dcf_discount_pct") is not None) and (item["dcf_discount_pct"] < 0)
-            if undervalued_dcf != is_undervalued_dcf:
-                continue
-        if undervalued_nav is not None:
-            is_undervalued_nav = (item.get("nav_discount_pct") is not None) and (item["nav_discount_pct"] < 0)
-            if undervalued_nav != is_undervalued_nav:
-                continue
-        rows.append(item)
-    return rows
+    return [to_stock_out(db, stock) for stock in q.order_by(Stock.name.asc()).all()]
 
 
 def _missing_metrics(metrics: Metrics | None) -> list[str]:
@@ -155,16 +129,20 @@ def _missing_metrics(metrics: Metrics | None) -> list[str]:
     return [key for key, value in checks.items() if value is None]
 
 
+def _calc_target_distance_pct(price: float | None, target: float | None) -> float | None:
+    if price is None or target is None or price == 0:
+        return None
+    return round(((target - price) / price) * 100.0, 2)
+
+
 def to_stock_out(db: Session, stock: Stock) -> dict:
     market = db.get(MarketData, stock.isin)
-    valuation = db.get(Valuation, stock.isin) or Valuation(isin=stock.isin, field_sources={}, field_locks={})
     position = db.get(Position, stock.isin) or Position(isin=stock.isin, tranches=0)
-
     metrics = db.get(Metrics, stock.isin)
     analyst_target = metrics.analyst_target_1y if metrics else None
-    dcf_discount = calc_discount_pct(market.current_price if market else None, valuation.fair_value_dcf)
-    nav_discount = calc_discount_pct(market.current_price if market else None, valuation.fair_value_nav)
-    target_distance = calc_target_distance_pct(market.current_price if market else None, analyst_target)
+    target_distance = _calc_target_distance_pct(
+        market.current_price if market else None, analyst_target
+    )
     return {
         "isin": stock.isin,
         "name": stock.name,
@@ -182,11 +160,6 @@ def to_stock_out(db: Session, stock: Stock) -> dict:
         "day_change_pct": market.day_change_pct if market else None,
         "last_updated": market.last_updated if market else None,
         "last_status": market.last_status if market else None,
-        "recommendation": valuation.recommendation or "none",
-        "fundamental_score": valuation.fundamental_score,
-        "moat_score": valuation.moat_score,
-        "dcf_discount_pct": dcf_discount,
-        "nav_discount_pct": nav_discount,
         "analyst_target_distance_pct": target_distance,
         "invested_capital_eur": float(position.tranches * 1000),
         "pe_forward": metrics.pe_forward if metrics else None,
@@ -201,10 +174,43 @@ def to_stock_out(db: Session, stock: Stock) -> dict:
         "debt_ratio": metrics.debt_ratio if metrics else None,
         "revenue_growth": metrics.revenue_growth if metrics else None,
         "missing_metrics": _missing_metrics(metrics),
-        "field_sources": valuation.field_sources,
-        "field_locks": valuation.field_locks,
         "tags": sorted([t.name for t in (stock.tags or [])]),
     }
+
+
+def find_similar_stocks(db: Session, stock: Stock, limit: int = 5) -> list[dict]:
+    """Heuristic peer suggestions: same sector, sorted by market-cap proximity.
+
+    We look exclusively in the local DB (no external lookup) so this stays
+    fast and free. Stocks without a known market cap fall to the end of the
+    list. If the input stock has no sector at all we return an empty list —
+    the UI then shows a friendly "kein Sektor" hint instead of guessing.
+    """
+    if not stock.sector:
+        return []
+
+    own_metrics = db.get(Metrics, stock.isin)
+    own_cap = own_metrics.market_cap if own_metrics else None
+
+    candidates = (
+        db.query(Stock)
+        .filter(Stock.sector == stock.sector, Stock.isin != stock.isin)
+        .all()
+    )
+    if not candidates:
+        return []
+
+    def sort_key(other: Stock):
+        m = db.get(Metrics, other.isin)
+        cap = m.market_cap if m else None
+        if own_cap is not None and cap is not None:
+            return (0, abs(cap - own_cap))
+        if cap is not None:
+            return (1, -cap)
+        return (2, other.name.lower())
+
+    candidates.sort(key=sort_key)
+    return [to_stock_out(db, c) for c in candidates[:limit]]
 
 
 def create_stock(db: Session, payload: StockCreate) -> Stock:
@@ -223,7 +229,6 @@ def create_stock(db: Session, payload: StockCreate) -> Stock:
     )
     db.merge(stock)
     db.merge(Position(isin=stock.isin, tranches=payload.tranches))
-    db.merge(Valuation(isin=stock.isin, field_sources={}, field_locks={}, recommendation="none"))
     db.merge(MarketData(isin=stock.isin, last_status="ok"))
     db.flush()
     persisted = db.get(Stock, stock.isin)
@@ -233,9 +238,23 @@ def create_stock(db: Session, payload: StockCreate) -> Stock:
     return db.get(Stock, stock.isin)
 
 
+STOCK_PATCH_FIELDS = (
+    "name",
+    "sector",
+    "currency",
+    "burggraben",
+    "reasoning",
+    "ticker_override",
+    "link_yahoo",
+    "link_finanzen",
+    "link_onvista_chart",
+    "link_onvista_fundamental",
+)
+
+
 def update_stock(db: Session, stock: Stock, payload: StockUpdate) -> Stock:
     data = payload.model_dump(exclude_unset=True)
-    for field in ["name", "sector", "currency", "burggraben", "reasoning", "ticker_override"]:
+    for field in STOCK_PATCH_FIELDS:
         if field in data:
             setattr(stock, field, data[field])
 
@@ -243,13 +262,6 @@ def update_stock(db: Session, stock: Stock, payload: StockUpdate) -> Stock:
         pos = db.get(Position, stock.isin) or Position(isin=stock.isin)
         pos.tranches = data["tranches"] or 0
         db.add(pos)
-
-    valuation = db.get(Valuation, stock.isin) or Valuation(isin=stock.isin, field_sources={}, field_locks={})
-    for key in ["recommendation", "recommendation_reason", "fundamental_score", "moat_score", "fair_value_dcf", "fair_value_nav"]:
-        if key in data:
-            setattr(valuation, key, data[key])
-            valuation.field_sources[key] = "manual"
-    db.add(valuation)
 
     if "tags" in data:
         stock.tags = _get_or_create_tags(db, data["tags"] or [])
@@ -299,13 +311,6 @@ def _extract_row_data(row: list[str]) -> dict | None:
     if tranches == 0 and sum_tranches:
         tranches = int(round(sum_tranches))
 
-    recommendation_raw = (_safe_get(row, CSV_COL_RECOMMENDATION) or "").strip().lower()
-    recommendation = "none"
-    if "risk" in recommendation_raw:
-        recommendation = "risk_buy"
-    elif "buy" in recommendation_raw:
-        recommendation = "buy"
-
     return {
         "isin": isin,
         "name": name,
@@ -313,7 +318,6 @@ def _extract_row_data(row: list[str]) -> dict | None:
         "currency": _safe_get(row, CSV_COL_PRIMARY_CURRENCY),
         "burggraben": bool((burggraben_tranches or 0) > 0),
         "tranches": tranches,
-        "recommendation": recommendation,
         "reasoning": _safe_get(row, CSV_COL_REASONING),
         "link_yahoo": _as_url(_safe_get(row, CSV_COL_YAHOO_LINK)),
         "link_finanzen": _as_url(_safe_get(row, CSV_COL_FINANZEN_LINK)),
@@ -322,32 +326,58 @@ def _extract_row_data(row: list[str]) -> dict | None:
     }
 
 
+def build_seed_rows(db: Session) -> list[dict]:
+    """Return current DB state as a list of dicts matching the seed JSON schema.
+
+    Field order, types and defaults are kept identical to
+    `backend/app/seed/stocks.seed.json` so the output can directly replace it.
+    Tags are an additive optional field and only emitted when present.
+    """
+    stocks = db.query(Stock).order_by(func.upper(Stock.name).asc()).all()
+    rows: list[dict] = []
+    for stock in stocks:
+        position = db.get(Position, stock.isin)
+        row: dict = {
+            "isin": stock.isin,
+            "name": stock.name,
+            "sector": stock.sector,
+            "currency": stock.currency,
+            "burggraben": bool(stock.burggraben),
+            "tranches": int(position.tranches) if position and position.tranches is not None else 0,
+            "reasoning": stock.reasoning,
+            "link_yahoo": stock.link_yahoo,
+            "link_finanzen": stock.link_finanzen,
+            "link_onvista_chart": stock.link_onvista_chart,
+            "link_onvista_fundamental": stock.link_onvista_fundamental,
+            "tags": sorted(t.name for t in (stock.tags or [])),
+        }
+        rows.append(row)
+    return rows
+
+
 def _upsert_seed_row(db: Session, row: dict) -> None:
     db.merge(
         Stock(
             isin=row["isin"],
             name=row["name"],
-            sector=row["sector"],
-            currency=row["currency"],
-            burggraben=row["burggraben"],
-            reasoning=row["reasoning"],
-            link_yahoo=row["link_yahoo"],
-            link_finanzen=row["link_finanzen"],
-            link_onvista_chart=row["link_onvista_chart"],
-            link_onvista_fundamental=row["link_onvista_fundamental"],
+            sector=row.get("sector"),
+            currency=row.get("currency"),
+            burggraben=row.get("burggraben", False),
+            reasoning=row.get("reasoning"),
+            link_yahoo=row.get("link_yahoo"),
+            link_finanzen=row.get("link_finanzen"),
+            link_onvista_chart=row.get("link_onvista_chart"),
+            link_onvista_fundamental=row.get("link_onvista_fundamental"),
         )
     )
-    db.merge(Position(isin=row["isin"], tranches=row["tranches"]))
-    db.merge(
-        Valuation(
-            isin=row["isin"],
-            recommendation=row["recommendation"],
-            field_sources={"recommendation": "manual"},
-            field_locks={},
-            last_ai_at=datetime.utcnow(),
-        )
-    )
+    db.merge(Position(isin=row["isin"], tranches=row.get("tranches", 0)))
     db.merge(MarketData(isin=row["isin"], last_status="ok"))
+    db.flush()
+    tag_names = row.get("tags") or []
+    if tag_names:
+        stock = db.get(Stock, row["isin"])
+        if stock is not None:
+            stock.tags = _get_or_create_tags(db, tag_names)
 
 
 def _safe_get(row: list[str], index: int) -> str | None:

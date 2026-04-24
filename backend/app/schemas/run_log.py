@@ -37,4 +37,3 @@ class RunStockStatusOut(BaseModel):
     symbol: RunStockStepOut
     quote: RunStockStepOut
     metrics: RunStockStepOut
-    ai: RunStockStepOut

@@ -1,7 +1,6 @@
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
+from app.core.time import utcnow
 from app.models.stock import MarketData, Metrics, Stock
 from app.providers.market.base import MarketProvider, MetricsData, QuoteData
 
@@ -44,7 +43,7 @@ class MarketService:
         row = db.get(MarketData, stock.isin) or MarketData(isin=stock.isin)
         row.current_price = quote.current_price
         row.day_change_pct = quote.day_change_pct
-        row.last_updated = datetime.utcnow()
+        row.last_updated = utcnow()
         row.last_status = "ok"
         row.last_error = None
         db.add(row)

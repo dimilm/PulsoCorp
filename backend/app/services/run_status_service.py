@@ -8,15 +8,15 @@ Retention: only the two most recent runs keep their per-stock detail rows.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Iterable
 
 from sqlalchemy.orm import Session
 
+from app.core.time import utcnow
 from app.models.run_log import RunLog, RunStockStatus
 from app.models.stock import Stock
 
-STEP_FIELDS = ("symbol", "quote", "metrics", "ai")
+STEP_FIELDS = ("symbol", "quote", "metrics")
 
 
 def humanize_error(exc: Exception) -> str:
@@ -87,23 +87,23 @@ def get_status_row(db: Session, run_id: int, isin: str) -> RunStockStatus | None
 
 def mark_stock_running(row: RunStockStatus) -> None:
     row.overall_status = "running"
-    row.started_at = datetime.utcnow()
+    row.started_at = utcnow()
 
 
 def mark_step_running(row: RunStockStatus, step: str) -> None:
     setattr(row, f"{step}_status", "running")
-    setattr(row, f"{step}_started_at", datetime.utcnow())
+    setattr(row, f"{step}_started_at", utcnow())
     setattr(row, f"{step}_error", None)
 
 
 def mark_step_done(row: RunStockStatus, step: str) -> None:
     setattr(row, f"{step}_status", "done")
-    setattr(row, f"{step}_finished_at", datetime.utcnow())
+    setattr(row, f"{step}_finished_at", utcnow())
 
 
 def mark_step_error(row: RunStockStatus, step: str, error: Exception | str) -> None:
     setattr(row, f"{step}_status", "error")
-    setattr(row, f"{step}_finished_at", datetime.utcnow())
+    setattr(row, f"{step}_finished_at", utcnow())
     if isinstance(error, Exception):
         setattr(row, f"{step}_error", humanize_error(error))
     else:
@@ -112,4 +112,36 @@ def mark_step_error(row: RunStockStatus, step: str, error: Exception | str) -> N
 
 def mark_stock_finished(row: RunStockStatus, success: bool) -> None:
     row.overall_status = "done" if success else "error"
-    row.finished_at = datetime.utcnow()
+    row.finished_at = utcnow()
+
+
+def mark_remaining_cancelled(db: Session, run_id: int) -> int:
+    """Set every still-open row of `run_id` to `cancelled` (overall + steps).
+
+    Used after a user-triggered abort so the UI does not keep showing
+    half-running stocks once the run flips to `phase=finished`.
+    Returns the number of rows updated.
+    """
+    rows = (
+        db.query(RunStockStatus)
+        .filter(
+            RunStockStatus.run_id == run_id,
+            RunStockStatus.overall_status.in_(("not_started", "running")),
+        )
+        .all()
+    )
+    if not rows:
+        return 0
+    now = utcnow()
+    for row in rows:
+        row.overall_status = "cancelled"
+        if row.finished_at is None:
+            row.finished_at = now
+        for step in STEP_FIELDS:
+            status = getattr(row, f"{step}_status")
+            if status in ("not_started", "running"):
+                setattr(row, f"{step}_status", "cancelled")
+                if getattr(row, f"{step}_finished_at") is None:
+                    setattr(row, f"{step}_finished_at", now)
+    db.commit()
+    return len(rows)

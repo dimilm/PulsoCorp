@@ -5,24 +5,18 @@ import { KebabIcon } from "./icons";
 interface Props {
   stock: Stock;
   onRefresh: (isin: string) => Promise<void>;
-  onEvaluate: (isin: string) => Promise<void>;
-  onAiPreview: (isin: string) => Promise<void>;
-  onToggleLock: (isin: string, field: string, locked: boolean) => Promise<void>;
   onEdit: (stock: Stock) => void;
   onDelete: (stock: Stock) => Promise<void>;
+  refreshDisabled?: boolean;
 }
 
 export default function RowActionsMenu({
   stock,
   onRefresh,
-  onEvaluate,
-  onAiPreview,
-  onToggleLock,
   onEdit,
   onDelete,
+  refreshDisabled = false,
 }: Props) {
-  const recLocked = !!stock.field_locks?.recommendation;
-
   return (
     <Dropdown
       align="right"
@@ -43,36 +37,13 @@ export default function RowActionsMenu({
       {(close) => (
         <>
           <DropdownItem
+            disabled={refreshDisabled}
             onSelect={() => {
               close();
               void onRefresh(stock.isin);
             }}
           >
-            Aktualisieren
-          </DropdownItem>
-          <DropdownItem
-            onSelect={() => {
-              close();
-              void onAiPreview(stock.isin);
-            }}
-          >
-            KI-Vorschlag anzeigen
-          </DropdownItem>
-          <DropdownItem
-            onSelect={() => {
-              close();
-              void onEvaluate(stock.isin);
-            }}
-          >
-            KI-Empfehlung übernehmen
-          </DropdownItem>
-          <DropdownItem
-            onSelect={() => {
-              close();
-              void onToggleLock(stock.isin, "recommendation", !recLocked);
-            }}
-          >
-            {recLocked ? "Empfehlung entsperren" : "Empfehlung sperren"}
+            {refreshDisabled ? "Aktualisierung läuft…" : "Aktualisieren"}
           </DropdownItem>
           <DropdownItem
             onSelect={() => {

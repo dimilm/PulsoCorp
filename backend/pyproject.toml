@@ -26,3 +26,14 @@ dev = [
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
+
+# Explicit package discovery. Without this, setuptools' flat-layout
+# auto-discovery refuses to install because it sees two top-level candidates
+# in backend/: `app/` (the real package) and `migrations/` (Alembic runtime
+# scripts, not a Python package). Docker does not hit this because
+# Dockerfile.backend copies only pyproject.toml into /build before
+# `pip install .` and adds the source afterwards via COPY.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["migrations*", "tests*", "data*"]

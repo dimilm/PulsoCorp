@@ -22,13 +22,26 @@ def _get_or_create_settings(db: Session) -> AppSettings:
     return row
 
 
+def _to_out(row: AppSettings) -> SettingsOut:
+    return SettingsOut(
+        update_hour=row.update_hour,
+        update_minute=row.update_minute,
+        update_weekends=row.update_weekends,
+        ai_provider=row.ai_provider,
+        ai_endpoint=row.ai_endpoint,
+        ai_model=row.ai_model,
+        ai_refresh_interval=row.ai_refresh_interval,
+        ai_api_key_set=bool(row.ai_api_key_encrypted),
+    )
+
+
 @router.get("", response_model=SettingsOut)
-def get_settings(_: dict = Depends(get_current_user), db: Session = Depends(get_db)) -> AppSettings:
-    return _get_or_create_settings(db)
+def get_settings(_: dict = Depends(get_current_user), db: Session = Depends(get_db)) -> SettingsOut:
+    return _to_out(_get_or_create_settings(db))
 
 
 @router.put("", response_model=SettingsOut, dependencies=[Depends(csrf_guard)])
-def put_settings(payload: SettingsUpdate, _: dict = Depends(require_admin), db: Session = Depends(get_db)) -> AppSettings:
+def put_settings(payload: SettingsUpdate, _: dict = Depends(require_admin), db: Session = Depends(get_db)) -> SettingsOut:
     row = _get_or_create_settings(db)
     data = payload.model_dump(exclude_unset=True)
     for key in ["update_hour", "update_minute", "update_weekends", "ai_provider", "ai_endpoint", "ai_model", "ai_refresh_interval"]:
@@ -41,4 +54,4 @@ def put_settings(payload: SettingsUpdate, _: dict = Depends(require_admin), db: 
     db.commit()
     db.refresh(row)
     sync_scheduler_from_db()
-    return row
+    return _to_out(row)

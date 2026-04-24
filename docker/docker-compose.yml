@@ -9,7 +9,11 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set in .env (generate via Fernet.generate_key())}
       SEED_JSON_PATH: ${SEED_JSON_PATH:-app/seed/stocks.seed.json}
     volumes:
-      - ../data:/data
+      # Named volume (lives on ext4 inside the WSL2 VM). A host bind mount of
+      # ../data does NOT work on Docker Desktop / Windows because the gRPC-FUSE
+      # layer surfaces sub-paths as nobody:nobody with mode 0755 and rejects
+      # writes even from container-root, which kills both Alembic and backups.
+      - app_data:/data
     # Backend is reached via the nginx proxy in the frontend container, so we
     # only expose it inside the compose network. Override with `ports` in a
     # docker-compose.override.yml if you need direct access for debugging.
@@ -35,9 +39,12 @@ services:
   backup:
     image: alpine:3.20
     volumes:
-      - ../data:/data
+      - app_data:/data
       - ./backup.sh:/backup.sh:ro
     command: ["sh", "/backup.sh"]
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  app_data:

@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends
 
 from app.api.deps import csrf_guard, get_current_user
-from app.services.scheduler_service import start_refresh_all_background
+from app.services.scheduler_service import (
+    cancel_current_refresh,
+    start_refresh_all_background,
+)
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -15,3 +18,14 @@ def refresh_all(_: dict = Depends(get_current_user)) -> dict:
     `GET /run-logs/current` and `GET /run-logs/{id}/stocks`.
     """
     return start_refresh_all_background()
+
+
+@router.post("/refresh-all/cancel", dependencies=[Depends(csrf_guard)])
+def cancel_refresh_all(_: dict = Depends(get_current_user)) -> dict:
+    """Request cancellation of the currently running refresh.
+
+    Returns immediately; the worker honours the flag between stocks (and
+    between retries within a stock), so the active stock may still finish
+    before the run flips to `phase=finished` / `status=cancelled`.
+    """
+    return cancel_current_refresh()
