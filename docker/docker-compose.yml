@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    environment:
+      DATABASE_URL: sqlite:////data/sqlite.db
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set in .env (generate via Fernet.generate_key())}
+      SEED_JSON_PATH: ${SEED_JSON_PATH:-app/seed/stocks.seed.json}
+    volumes:
+      - ../data:/data
+    # Backend is reached via the nginx proxy in the frontend container, so we
+    # only expose it inside the compose network. Override with `ports` in a
+    # docker-compose.override.yml if you need direct access for debugging.
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=5).read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backup:
+    image: alpine:3.20
+    volumes:
+      - ../data:/data
+      - ./backup.sh:/backup.sh:ro
+    command: ["sh", "/backup.sh"]
+    depends_on:
+      - backend
+    restart: unless-stopped

@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1.7
+
+# ----------------------------------------------------------------------------
+# Build the React bundle. We rely on `npm ci` so the build is reproducible
+# from package-lock.json and never installs unexpected versions.
+# ----------------------------------------------------------------------------
+FROM node:20-alpine AS build
+WORKDIR /src
+
+# Copy lockfile first so Docker can cache the install layer when only source
+# files change.
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+COPY frontend ./
+RUN npm run build
+
+# ----------------------------------------------------------------------------
+# Runtime: nginx serves the static bundle and proxies /api to the backend.
+# The default Comp_List.csv is intentionally NOT shipped to the webroot
+# anymore - the seed import happens server-side via SEED_JSON_PATH and the
+# UI has its own file picker for ad-hoc CSV uploads.
+# ----------------------------------------------------------------------------
+FROM nginx:1.27-alpine
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /src/dist /usr/share/nginx/html
+EXPOSE 80

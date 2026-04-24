@@ -1,0 +1,64 @@
+# syntax=docker/dockerfile:1.7
+
+# ----------------------------------------------------------------------------
+# Builder: install Python deps from pyproject.toml into a virtualenv that we
+# copy into the runtime stage. Keeping the build toolchain out of the final
+# image cuts the size and the attack surface.
+# ----------------------------------------------------------------------------
+FROM python:3.12-slim AS builder
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY backend/pyproject.toml ./pyproject.toml
+
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --upgrade pip \
+    && /opt/venv/bin/pip install .
+
+
+# ----------------------------------------------------------------------------
+# Runtime: slim Python image with only the venv and the application code. We
+# run as a non-root user so a compromised process cannot rewrite the
+# filesystem or escalate inside the container.
+# ----------------------------------------------------------------------------
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    SEED_JSON_PATH=app/seed/stocks.seed.json
+
+# `gosu` is used by the entrypoint to drop privileges from root → app after
+# the bind-mounted /data directory has been chowned. We need root very briefly
+# at startup because Docker Desktop / WSL2 surfaces host bind-mounts as
+# nobody:nobody, which the unprivileged `app` user cannot write to.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 1001 app \
+    && useradd --system --uid 1001 --gid app --home /app --shell /usr/sbin/nologin app
+
+WORKDIR /app
+COPY --from=builder /opt/venv /opt/venv
+COPY backend/app /app/app
+COPY backend/migrations /app/migrations
+COPY backend/alembic.ini /app/alembic.ini
+COPY backend/pyproject.toml /app/pyproject.toml
+COPY docker/entrypoint-backend.sh /usr/local/bin/entrypoint-backend.sh
+
+RUN mkdir -p /app/data \
+    && chown -R app:app /app \
+    && chmod +x /usr/local/bin/entrypoint-backend.sh
+
+# We intentionally stay as root here; entrypoint-backend.sh drops to `app`
+# via gosu after fixing the /data bind-mount permissions.
+EXPOSE 8000
+ENTRYPOINT ["/usr/local/bin/entrypoint-backend.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

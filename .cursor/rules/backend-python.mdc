@@ -1,0 +1,51 @@
+---
+description: Backend (FastAPI) conventions, test workflow, schema changes
+globs: backend/**/*.py
+alwaysApply: false
+---
+
+# Backend workflow
+
+## Run
+
+From `backend/` with the venv active:
+
+```bash
+uvicorn app.main:app --reload --port 8001
+```
+
+`--reload` covers handler/service edits. Restart manually after:
+
+- Changes to `app/main.py` startup or `lifespan`.
+- New Alembic revisions in `backend/migrations/`.
+
+## Tests (pytest)
+
+- Always run from `backend/` so pytest picks up `tests/conftest.py`.
+- `conftest.py` writes a temp SQLite DB and sets test secrets — tests must
+  never hit `backend/data/sqlite.db`.
+
+```bash
+pytest                          # full suite
+pytest tests/test_<name>.py -x  # focused, stop on first failure
+pytest -k <substring>           # filter
+```
+
+TDD loop: write/extend a test under `backend/tests/test_*.py`, get it red,
+implement until green, then run the whole suite before handing off.
+
+## Schema changes
+
+- Models live in `backend/app/models/`.
+- Generate a revision with `alembic revision --autogenerate -m "<msg>"`,
+  review the SQL, then commit migration + model together.
+- Never edit a migration that has shipped; add a follow-up revision instead.
+
+## Style
+
+- Use SQLAlchemy 2.x style (`db.execute(select(...))`, typed `Mapped[...]`).
+- Keep handlers thin — push logic into `app/services/` and `app/providers/`.
+- Provider integrations (OpenAI, Ollama, yfinance) must keep working with the
+  fallback path; never assume a key is configured.
+- Don't add narrating comments (`# import foo`, `# return result`); only
+  comment non-obvious intent or trade-offs.

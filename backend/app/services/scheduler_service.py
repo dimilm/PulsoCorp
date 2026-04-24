@@ -1,0 +1,442 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import socket
+import time
+from datetime import datetime, timedelta
+from typing import Awaitable, Callable, TypeVar
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from sqlalchemy.orm import Session
+
+from app.db.session import SessionLocal
+from app.models.run_log import JobLock, RunLog, RunStockStatus
+from app.models.settings import AppSettings
+from app.models.stock import MarketData, Stock
+from app.providers.market.yfinance_provider import YFinanceProvider
+from app.services.ai_service import AIService
+from app.services.market_service import MarketService
+from app.services.provider_factory import build_ai_provider
+from app.services.refresh_worker import worker as refresh_worker
+from app.services.run_status_service import (
+    cleanup_old_run_status,
+    get_status_row,
+    humanize_error,
+    init_run_stocks,
+    mark_step_done,
+    mark_step_error,
+    mark_step_running,
+    mark_stock_finished,
+    mark_stock_running,
+    two_most_recent_run_ids,
+)
+
+logger = logging.getLogger(__name__)
+
+scheduler = BackgroundScheduler()
+
+T = TypeVar("T")
+
+_RETRY_DELAYS = (0, 2, 4, 8)
+_LOCK_NAME = "daily_refresh"
+# After this many seconds without a heartbeat the lock is considered stale and
+# may be reclaimed. The refresh writes a heartbeat after every stock, so even
+# the AI step (worst case ~60s) stays well under the limit.
+_LOCK_HEARTBEAT_TTL = timedelta(minutes=5)
+
+
+def _process_owner() -> str:
+    return f"{socket.gethostname()}:{os.getpid()}"
+
+
+def _is_lock_stale(lock: JobLock) -> bool:
+    if not lock.locked:
+        return False
+    if lock.heartbeat_at is None:
+        # Old row from before the TTL columns existed -> treat as stale.
+        return True
+    return datetime.utcnow() - lock.heartbeat_at > _LOCK_HEARTBEAT_TTL
+
+
+def _heartbeat(db: Session, owner: str) -> None:
+    """Renew the heartbeat for the current lock owner."""
+    lock = db.get(JobLock, _LOCK_NAME)
+    if lock is None or lock.owner != owner:
+        return
+    lock.heartbeat_at = datetime.utcnow()
+    db.add(lock)
+    db.commit()
+
+
+def recover_stale_locks() -> None:
+    """Release locks whose owner crashed.
+
+    Called from the FastAPI lifespan on every startup. Any refresh that was
+    interrupted is also marked as 'finished/error' so the UI does not keep
+    showing a perpetually-running run.
+    """
+    db = SessionLocal()
+    try:
+        lock = db.get(JobLock, _LOCK_NAME)
+        if lock and _is_lock_stale(lock):
+            logger.warning(
+                "Reclaiming stale refresh lock (owner=%s, heartbeat=%s)",
+                lock.owner,
+                lock.heartbeat_at,
+            )
+            lock.locked = False
+            lock.owner = None
+            db.add(lock)
+            for stuck in (
+                db.query(RunLog).filter(RunLog.phase.in_(("queued", "running"))).all()
+            ):
+                stuck.phase = "finished"
+                stuck.status = "error"
+                stuck.finished_at = datetime.utcnow()
+                stuck.error_details = (stuck.error_details or "") + "\nrecovered after crash"
+                db.add(stuck)
+            db.commit()
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Public entrypoints
+# ---------------------------------------------------------------------------
+
+def start_refresh_all_background() -> dict:
+    """Prepare a refresh run synchronously, then hand the work off to the worker.
+
+    Returns a small dict with `run_id`, `phase` and `status` so that the UI can
+    immediately navigate to the runs view and start polling for updates. This
+    function is purposely *not* async: it must complete entirely on the calling
+    request thread (no awaits) so the FastAPI event loop is free to serve other
+    requests while the refresh runs on the dedicated worker.
+    """
+    db = SessionLocal()
+    try:
+        app_settings = db.get(AppSettings, 1) or AppSettings(id=1)
+        db.add(app_settings)
+        db.commit()
+
+        if not app_settings.update_weekends and datetime.utcnow().weekday() >= 5:
+            run = RunLog(
+                phase="finished",
+                status="skipped",
+                started_at=datetime.utcnow(),
+                finished_at=datetime.utcnow(),
+                error_details="Weekend skip active",
+            )
+            db.add(run)
+            db.commit()
+            return {"run_id": run.id, "phase": "finished", "status": "skipped"}
+
+        lock = db.get(JobLock, _LOCK_NAME) or JobLock(name=_LOCK_NAME, locked=False)
+        if lock.locked and not _is_lock_stale(lock):
+            current = (
+                db.query(RunLog)
+                .filter(RunLog.phase.in_(("queued", "running")))
+                .order_by(RunLog.id.desc())
+                .first()
+            )
+            return {
+                "run_id": current.id if current else None,
+                "phase": "running",
+                "status": "already_running",
+            }
+        if lock.locked:
+            logger.warning(
+                "Stale refresh lock detected (owner=%s, heartbeat=%s) – reclaiming",
+                lock.owner,
+                lock.heartbeat_at,
+            )
+
+        owner = _process_owner()
+        now = datetime.utcnow()
+        lock.locked = True
+        lock.owner = owner
+        lock.acquired_at = now
+        lock.heartbeat_at = now
+        db.add(lock)
+
+        run = RunLog(phase="queued", started_at=datetime.utcnow())
+        db.add(run)
+        db.commit()
+
+        stocks = db.query(Stock).all()
+        run.stocks_total = len(stocks)
+        db.add(run)
+        init_run_stocks(db, run.id, stocks)
+
+        cleanup_old_run_status(db, two_most_recent_run_ids(db))
+
+        run_id = run.id
+        owner_id = owner
+    finally:
+        db.close()
+
+    refresh_worker.submit(lambda: _execute_refresh(run_id, owner_id))
+    return {"run_id": run_id, "phase": "queued", "status": "started"}
+
+
+def run_refresh_all_blocking() -> RunLog:
+    """Cron entrypoint. Schedules the refresh on the worker and blocks until done.
+
+    APScheduler runs jobs on its own thread, so blocking here is fine and does
+    not affect the FastAPI loop. The blocking is implemented by waiting on the
+    future returned by the worker; we sleep on `RunLog.phase` as a fallback so
+    we never hold the cron thread forever if the worker dies.
+    """
+    import time as _time
+
+    result = start_refresh_all_background()
+    run_id = result.get("run_id")
+    if not run_id:
+        return RunLog(status="skipped")
+    deadline = _time.time() + 60 * 60 * 4  # 4h hard cap
+    while _time.time() < deadline:
+        check = SessionLocal()
+        try:
+            row = check.get(RunLog, run_id)
+            if row is None or row.phase == "finished":
+                return row or RunLog(id=run_id, status="error")
+        finally:
+            check.close()
+        _time.sleep(2)
+    logger.warning("Refresh run %s exceeded the cron blocking deadline", run_id)
+    return RunLog(id=run_id, status="error")
+
+
+# ---------------------------------------------------------------------------
+# Background execution
+# ---------------------------------------------------------------------------
+
+async def _execute_refresh(run_id: int, owner: str) -> None:
+    """Process every stock for `run_id`, writing live progress to the DB."""
+    db = SessionLocal()
+    started = time.perf_counter()
+    errors: list[str] = []
+    try:
+        run = db.get(RunLog, run_id)
+        if not run:
+            logger.error("Refresh run %s vanished before execution", run_id)
+            return
+        run.phase = "running"
+        db.add(run)
+        db.commit()
+
+        app_settings = db.get(AppSettings, 1) or AppSettings(id=1)
+        market_service = MarketService(YFinanceProvider())
+        ai_service = AIService(build_ai_provider(app_settings))
+        refresh_days = {"daily": 1, "weekly": 7, "monthly": 30}.get(
+            app_settings.ai_refresh_interval, 30
+        )
+
+        stocks = db.query(Stock).all()
+        for stock in stocks:
+            success = await _process_single_stock(
+                db, run_id, stock, market_service, ai_service, refresh_days, errors
+            )
+            run.stocks_done += 1
+            if success:
+                run.stocks_success += 1
+            else:
+                run.stocks_error += 1
+            db.add(run)
+            db.commit()
+            # Heartbeat once per stock so a crash detector can tell whether the
+            # process is still alive even on long-running runs.
+            _heartbeat(db, owner)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Refresh run %s crashed: %s", run_id, exc)
+        errors.append(f"run-crash: {exc}")
+    finally:
+        run = db.get(RunLog, run_id)
+        if run is not None:
+            run.phase = "finished"
+            run.finished_at = datetime.utcnow()
+            run.duration_seconds = int(time.perf_counter() - started)
+            run.status = "ok" if not errors else "partial_error"
+            run.error_details = "\n".join(errors) if errors else None
+            db.add(run)
+        lock = db.get(JobLock, _LOCK_NAME)
+        if lock is not None:
+            # Only release the lock if we actually own it; otherwise leave it
+            # alone so the rightful owner / recovery code can deal with it.
+            if lock.owner in (None, owner):
+                lock.locked = False
+                lock.owner = None
+                lock.heartbeat_at = None
+                db.add(lock)
+        db.commit()
+        db.close()
+
+
+async def _process_single_stock(
+    db: Session,
+    run_id: int,
+    stock: Stock,
+    market: MarketService,
+    ai: AIService,
+    refresh_days: int,
+    errors: list[str],
+) -> bool:
+    row = get_status_row(db, run_id, stock.isin)
+    if row is None:
+        # Should not happen because we initialise rows up-front, but be safe.
+        row = RunStockStatus(run_id=run_id, isin=stock.isin, stock_name=stock.name)
+        db.add(row)
+        db.commit()
+
+    mark_stock_running(row)
+    db.add(row)
+    db.commit()
+
+    # Step 1: resolve the symbol. No retry — the lookup is cached and either
+    # the link is present or it isn't; retrying makes no observable difference.
+    try:
+        mark_step_running(row, "symbol")
+        db.add(row)
+        db.commit()
+        symbol = await market.resolve_symbol(stock)
+        row.resolved_symbol = symbol
+        mark_step_done(row, "symbol")
+        db.add(row)
+        db.commit()
+    except Exception as exc:
+        mark_step_error(row, "symbol", exc)
+        mark_stock_finished(row, success=False)
+        db.add(row)
+        db.commit()
+        _flag_market_error(db, stock.isin, exc)
+        errors.append(f"{stock.isin}: symbol: {exc}")
+        return False
+
+    # Step 2: fetch the live quote (with retry).
+    try:
+        mark_step_running(row, "quote")
+        db.add(row)
+        db.commit()
+        quote = await _retry(lambda: market.fetch_quote(symbol))
+        mark_step_done(row, "quote")
+        db.add(row)
+        db.commit()
+    except Exception as exc:
+        mark_step_error(row, "quote", exc)
+        mark_stock_finished(row, success=False)
+        db.add(row)
+        db.commit()
+        _flag_market_error(db, stock.isin, exc)
+        errors.append(f"{stock.isin}: quote: {exc}")
+        return False
+
+    # Step 3: fetch the fundamentals (with retry).
+    try:
+        mark_step_running(row, "metrics")
+        db.add(row)
+        db.commit()
+        metrics_data = await _retry(lambda: market.fetch_metrics(symbol))
+        mark_step_done(row, "metrics")
+        db.add(row)
+        db.commit()
+    except Exception as exc:
+        mark_step_error(row, "metrics", exc)
+        mark_stock_finished(row, success=False)
+        db.add(row)
+        db.commit()
+        _flag_market_error(db, stock.isin, exc)
+        errors.append(f"{stock.isin}: metrics: {exc}")
+        return False
+
+    # Step 3b: persist market & metrics rows (cheap, no separate user-facing step).
+    try:
+        market.persist(db, stock, quote, metrics_data)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        mark_step_error(row, "metrics", exc)
+        mark_stock_finished(row, success=False)
+        db.add(row)
+        db.commit()
+        _flag_market_error(db, stock.isin, exc)
+        errors.append(f"{stock.isin}: persist: {exc}")
+        return False
+
+    # Step 4: AI evaluation. A failure here does not invalidate the price
+    # update, but the stock is still marked as having an issue.
+    ai_failed = False
+    try:
+        mark_step_running(row, "ai")
+        db.add(row)
+        db.commit()
+        await ai.evaluate_stock(db, stock, refresh_days=refresh_days)
+        mark_step_done(row, "ai")
+        db.add(row)
+        db.commit()
+    except Exception as exc:
+        ai_failed = True
+        mark_step_error(row, "ai", exc)
+        db.add(row)
+        db.commit()
+        errors.append(f"{stock.isin}: ai: {exc}")
+
+    mark_stock_finished(row, success=not ai_failed)
+    db.add(row)
+    db.commit()
+    return not ai_failed
+
+
+def _flag_market_error(db: Session, isin: str, exc: Exception) -> None:
+    """Mirror the failure into `MarketData.last_status` for the watchlist column."""
+    row = db.get(MarketData, isin) or MarketData(isin=isin)
+    row.last_status = "error"
+    row.last_error = humanize_error(exc)
+    db.add(row)
+    db.commit()
+
+
+async def _retry(fn: Callable[[], Awaitable[T]]) -> T:
+    last_exc: Exception | None = None
+    for delay in _RETRY_DELAYS:
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            return await fn()
+        except Exception as exc:
+            last_exc = exc
+    if last_exc is None:  # pragma: no cover - logically unreachable
+        raise RuntimeError("retry failed without capturing exception")
+    raise last_exc
+
+
+# ---------------------------------------------------------------------------
+# Cron scheduler wiring
+# ---------------------------------------------------------------------------
+
+def _schedule(hour: int, minute: int) -> None:
+    scheduler.add_job(_job, "cron", hour=hour, minute=minute, id="daily_refresh", replace_existing=True)
+
+
+def _job() -> None:
+    run_refresh_all_blocking()
+
+
+def sync_scheduler_from_db() -> None:
+    db = SessionLocal()
+    try:
+        row = db.get(AppSettings, 1) or AppSettings(id=1)
+        db.add(row)
+        db.commit()
+        _schedule(row.update_hour, row.update_minute)
+    finally:
+        db.close()
+
+
+def start_scheduler() -> None:
+    if scheduler.running:
+        sync_scheduler_from_db()
+        return
+    sync_scheduler_from_db()
+    scheduler.start()

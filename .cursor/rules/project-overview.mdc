@@ -1,0 +1,42 @@
+---
+description: CompanyTracker project layout, ports, secrets and default login
+alwaysApply: true
+---
+
+# CompanyTracker conventions
+
+## Layout
+
+- `backend/` – FastAPI + SQLAlchemy + Alembic, Python 3.12, entrypoint `app.main:app`.
+- `frontend/` – React 18 + Vite + TanStack Query + React Router.
+- `docker/` – `docker-compose.yml` plus per-service Dockerfiles and `nginx.conf`.
+- `data/` – runtime SQLite DB + rotating backups (gitignored).
+- `Anforderungen.md`, `plan-umsetzung.md` – product spec, treat as source of truth.
+
+## Ports (local dev, no Docker)
+
+- Backend: `http://localhost:8001` (`uvicorn app.main:app --reload --port 8001`).
+- Frontend: `http://localhost:5173` (`npm run dev`), proxies `/api/*` to 8001.
+- Docker: frontend on `8080`, backend exposed only inside the compose network.
+
+## Secrets
+
+- `JWT_SECRET` and `ENCRYPTION_KEY` (Fernet) are required.
+- Local: `backend/.env`. Docker: `docker/.env`. Both are gitignored — never commit.
+- Rotating `ENCRYPTION_KEY` invalidates the stored OpenAI API key in `app_settings`.
+
+## Default login
+
+`admin / changeme` – seeded on first DB bootstrap by `init_db()` in `backend/app/main.py`.
+
+## Database
+
+- Auto-bootstrapped on backend startup: Alembic `upgrade head`, admin user, seed
+  from `app/seed/stocks.seed.json` (only when `stocks` is empty).
+- Reset locally by deleting `backend/data/sqlite.db` and restarting uvicorn.
+
+## Refresh pipeline (per stock)
+
+`resolve_symbol → fetch_quote → fetch_metrics → evaluate_stock`, tracked in
+`run_logs` + `run_stock_status`. Guarded by `JobLock` against double-starts.
+Diagram lives in `canvases/refresh-flow.canvas.tsx` and `README.md`.
