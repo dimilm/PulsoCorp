@@ -4,6 +4,7 @@ import {
   changeClass,
   defaultThresholds,
   dividendClass,
+  equityRatioClass,
   targetClass,
 } from "./colorRules";
 
@@ -35,5 +36,25 @@ describe("targetClass", () => {
 describe("dividendClass", () => {
   it("flags high dividends", () => {
     expect(dividendClass(defaultThresholds.highDividendPct + 0.1)).toBe("pill-cyan");
+  });
+});
+
+describe("equityRatioClass", () => {
+  it("returns empty for null", () => {
+    expect(equityRatioClass(null)).toBe("");
+  });
+  it("flags weak equity ratios as bad", () => {
+    expect(equityRatioClass(defaultThresholds.equityRatioMinPct - 0.1)).toBe("kpi-bad");
+    expect(equityRatioClass(0)).toBe("kpi-bad");
+  });
+  it("treats the warn band as yellow (inclusive on both ends)", () => {
+    expect(equityRatioClass(defaultThresholds.equityRatioMinPct)).toBe("kpi-warn");
+    expect(equityRatioClass(defaultThresholds.equityRatioGoodPct)).toBe("kpi-warn");
+    const mid = (defaultThresholds.equityRatioMinPct + defaultThresholds.equityRatioGoodPct) / 2;
+    expect(equityRatioClass(mid)).toBe("kpi-warn");
+  });
+  it("flags strong equity ratios as good", () => {
+    expect(equityRatioClass(defaultThresholds.equityRatioGoodPct + 0.1)).toBe("kpi-good");
+    expect(equityRatioClass(80)).toBe("kpi-good");
   });
 });

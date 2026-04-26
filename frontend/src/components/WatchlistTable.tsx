@@ -8,6 +8,7 @@ import {
   dividendClass,
   targetClass,
 } from "../lib/colorRules";
+import { formatNumber, formatPercent } from "../lib/format";
 import { tagColorClass } from "../lib/tagColor";
 import { AIPillRow } from "./ai/AIPillRow";
 import RowActionsMenu from "./RowActionsMenu";
@@ -32,16 +33,18 @@ function SortHeader({
   sortBy,
   sortDir,
   onSort,
+  className,
 }: {
   label: string;
   keyName: string;
   sortBy: string;
   sortDir: "asc" | "desc";
   onSort: (key: string) => void;
+  className?: string;
 }) {
   const marker = sortBy === keyName ? (sortDir === "asc" ? " ▲" : " ▼") : "";
   return (
-    <th>
+    <th className={className}>
       <button type="button" onClick={() => onSort(keyName)}>
         {label}
         {marker}
@@ -71,11 +74,11 @@ export default function WatchlistTable({
           <SortHeader label="Sektor" keyName="sector" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
           <th>Tags</th>
           <SortHeader label="Burggraben" keyName="burggraben" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
-          <SortHeader label="Tranchen" keyName="tranches" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
-          <SortHeader label="Kurs" keyName="current_price" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
-          <SortHeader label="Tagesaend. %" keyName="day_change_pct" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
-          <SortHeader label="Kursziel %" keyName="analyst_target_distance_pct" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
-          <SortHeader label="Div. %" keyName="dividend_yield_current" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
+          <SortHeader label="Tranchen" keyName="tranches" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="num-cell" />
+          <SortHeader label="Kurs" keyName="current_price" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="num-cell" />
+          <SortHeader label="Tagesänd. (%)" keyName="day_change_pct" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="num-cell" />
+          <SortHeader label="Kursziel (%)" keyName="analyst_target_distance_pct" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="num-cell" />
+          <SortHeader label="Div. (%)" keyName="dividend_yield_current" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="num-cell" />
           <SortHeader label="Status" keyName="last_status" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
           <th>KI</th>
           <th className="actions-header" aria-label="Aktionen" />
@@ -113,19 +116,21 @@ export default function WatchlistTable({
               )}
             </td>
             <td>{s.burggraben ? "Ja" : "Nein"}</td>
-            <td>{s.tranches}</td>
-            <td>{s.current_price?.toFixed(2) ?? "-"}</td>
-            <td>
-              <span className={changeClass(s.day_change_pct, thresholds)}>{s.day_change_pct?.toFixed(2) ?? "-"} </span>
-            </td>
-            <td>
-              <span className={targetClass(s.analyst_target_distance_pct, thresholds)}>
-                {s.analyst_target_distance_pct?.toFixed(2) ?? "-"}
+            <td className="num-cell">{s.tranches}</td>
+            <td className="num-cell">{formatNumber(s.current_price)}</td>
+            <td className="num-cell">
+              <span className={changeClass(s.day_change_pct, thresholds)}>
+                {formatPercent(s.day_change_pct, 2, { withUnit: false })}
               </span>
             </td>
-            <td>
+            <td className="num-cell">
+              <span className={targetClass(s.analyst_target_distance_pct, thresholds)}>
+                {formatPercent(s.analyst_target_distance_pct, 2, { withUnit: false })}
+              </span>
+            </td>
+            <td className="num-cell">
               <span className={dividendClass(s.dividend_yield_current, thresholds)}>
-                {s.dividend_yield_current?.toFixed(2) ?? "-"}
+                {formatPercent(s.dividend_yield_current, 2, { withUnit: false, showSign: false })}
               </span>
             </td>
             <td>{s.last_status ?? "-"}</td>

@@ -16,16 +16,21 @@ export function formatNumber(value: number | null | undefined, fractionDigits = 
   });
 }
 
+// Renders a percent value. By default the unit (` %`) is appended (Schule A:
+// "+1.42 %"). For Schule-B style tables that show `(%)` in the column header
+// instead of in every cell, pass `withUnit: false` to drop the suffix while
+// keeping the explicit sign for signed values.
 export function formatPercent(
   value: number | null | undefined,
   fractionDigits = 2,
-  options: { showSign?: boolean } = {}
+  options: { showSign?: boolean; withUnit?: boolean } = {}
 ): string {
   if (isMissing(value)) return DASH;
-  const { showSign = true } = options;
+  const { showSign = true, withUnit = true } = options;
   const v = value as number;
   const sign = showSign && v > 0 ? "+" : "";
-  return `${sign}${v.toFixed(fractionDigits)} %`;
+  const unit = withUnit ? " %" : "";
+  return `${sign}${v.toFixed(fractionDigits)}${unit}`;
 }
 
 export function formatCurrency(

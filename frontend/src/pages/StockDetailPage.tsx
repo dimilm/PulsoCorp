@@ -36,6 +36,7 @@ import {
   changeClass,
   defaultThresholds,
   dividendClass,
+  equityRatioClass,
   targetClass,
 } from "../lib/colorRules";
 import { confirm } from "../lib/dialogs";
@@ -181,7 +182,7 @@ function HistoryChart({ isin, stock }: HistoryChartProps) {
         <>
           <div className="detail-chart-body">
             <ResponsiveContainer width="100%" height={320}>
-              <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+              <LineChart data={chartData} margin={{ top: 8, right: 64, bottom: 0, left: 0 }}>
                 <CartesianGrid stroke={chartTheme.grid} vertical={false} />
                 <XAxis
                   dataKey="date"
@@ -589,6 +590,14 @@ export function StockDetailPage() {
                 Onvista Fundamentals ↗
               </a>
             )}
+            <a
+              href={`https://www.comdirect.de/inf/aktien/${stock.isin}`}
+              target="_blank"
+              rel="noreferrer"
+              className="detail-link"
+            >
+              comdirect ↗
+            </a>
           </div>
         </div>
         <div className="detail-hero-side">
@@ -666,7 +675,8 @@ export function StockDetailPage() {
             />
             <KpiTile
               label="Eigenkapitalquote"
-              value={formatPercent(stock.equity_ratio)}
+              value={formatPercent(stock.equity_ratio, 2, { showSign: false })}
+              className={equityRatioClass(stock.equity_ratio, defaultThresholds)}
             />
             <KpiTile
               label="Verschuldungsgrad"

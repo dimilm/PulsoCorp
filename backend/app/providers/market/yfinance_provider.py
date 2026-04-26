@@ -92,9 +92,13 @@ class YFinanceProvider(MarketProvider):
         # so we rebuild it from price / EPS samples. If anything is missing we
         # return None instead of leaking a price-as-PE approximation.
         pe_min, pe_max, pe_avg = await self._fetch_pe_band(ticker, info)
-        total_assets = info.get("totalAssets")
-        total_equity = info.get("totalStockholderEquity")
-        total_debt = info.get("totalDebt")
+        # yfinance hat `totalAssets` / `totalStockholderEquity` aus dem
+        # `info`-Dict effektiv entfernt — nur `totalDebt` taucht dort noch
+        # zuverlässig auf. Echte Bilanzpositionen kommen jetzt aus
+        # `ticker.balance_sheet` (annual, Fallback: quarterly).
+        total_assets, total_equity, total_debt = await self._fetch_balance_sheet_values(ticker)
+        if total_debt is None:
+            total_debt = _safe_float(info.get("totalDebt"))
         equity_ratio = (total_equity / total_assets * 100) if total_assets and total_equity else None
         debt_ratio = (total_debt / total_equity * 100) if total_debt and total_equity else None
         return MetricsData(
@@ -192,6 +196,57 @@ class YFinanceProvider(MarketProvider):
         if not pes:
             return None, None, None
         return min(pes), max(pes), sum(pes) / len(pes)
+
+    async def _fetch_balance_sheet_values(
+        self, ticker: "yf.Ticker"
+    ) -> tuple[float | None, float | None, float | None]:
+        """Pull (total_assets, total_equity, total_debt) from the latest balance sheet.
+
+        Yahoo's quote summary (`Ticker.info`) no longer exposes assets/equity
+        for most tickers. The balance-sheet DataFrame is the only reliable
+        source. Row labels differ across yfinance/Yahoo versions, so we try
+        a small list of known synonyms. Annual data is preferred; if it is
+        empty (some companies skip annual filings) we fall back to quarterly.
+        Any failure returns the partial result we managed to extract.
+        """
+        # Newest period sits in column 0 in yfinance balance sheets.
+        equity_labels = (
+            "Stockholders Equity",
+            "Total Stockholder Equity",
+            "Common Stock Equity",
+            "Total Equity Gross Minority Interest",
+        )
+        debt_labels = ("Total Debt", "Long Term Debt")
+        assets_labels = ("Total Assets",)
+
+        for accessor in ("balance_sheet", "quarterly_balance_sheet"):
+            try:
+                bs = await asyncio.to_thread(lambda a=accessor: getattr(ticker, a))
+            except Exception as exc:
+                logger.warning(
+                    "yfinance balance-sheet accessor %s failed for %s: %s",
+                    accessor,
+                    getattr(ticker, "ticker", "?"),
+                    exc,
+                )
+                continue
+            if bs is None or getattr(bs, "empty", True):
+                continue
+
+            def _latest(row_names: tuple[str, ...]) -> float | None:
+                for name in row_names:
+                    if name in bs.index:
+                        series = bs.loc[name].dropna()
+                        if not series.empty:
+                            return _safe_float(series.iloc[0])
+                return None
+
+            assets = _latest(assets_labels)
+            equity = _latest(equity_labels)
+            debt = _latest(debt_labels)
+            if assets is not None or equity is not None or debt is not None:
+                return assets, equity, debt
+        return None, None, None
 
 
 def _to_naive(value):

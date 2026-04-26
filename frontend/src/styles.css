@@ -599,6 +599,20 @@ td.actions-cell {
   text-align: center;
 }
 
+/* Numeric columns (prices, percentages, counts). Right-align with tabular
+ * figures so values line up vertically regardless of digit width. The header
+ * button is a flex-button with default centering, so we override it here. */
+th.num-cell,
+td.num-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+th.num-cell > button {
+  width: 100%;
+  text-align: right;
+}
+
 .actions-cell .dropdown {
   display: inline-block;
 }
@@ -2192,6 +2206,23 @@ input::placeholder {
 .run-summary-item.kpi-highlight {
   background: #ecfeff;
   border-color: #a5f3fc;
+}
+
+/* Traffic-light variants for ratio KPIs (e.g. Eigenkapitalquote).
+ * Same tints as the `pill-*` classes in the watchlist for visual consistency. */
+.run-summary-item.kpi-good {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.run-summary-item.kpi-warn {
+  background: #fef9c3;
+  border-color: #fde047;
+}
+
+.run-summary-item.kpi-bad {
+  background: #fecaca;
+  border-color: #fca5a5;
 }
 
 .kpi-badge-wrap {
