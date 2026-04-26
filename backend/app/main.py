@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from app.api.v1 import ai, auth, dashboard, export_csv, import_csv, jobs, run_logs, settings, stocks, tags
 from app.core.config import settings as app_settings
@@ -23,11 +23,15 @@ logger = logging.getLogger(__name__)
 def _run_schema_setup() -> None:
     """Apply Alembic migrations.
 
-    For brand-new databases we simply run `upgrade head`. For existing SQLite
-    files that were originally created via `Base.metadata.create_all`, we
-    detect the legacy state (tables exist, no `alembic_version` row) and stamp
-    them at the 0001 baseline before running any pending upgrades. This avoids
-    Alembic trying to recreate live tables on first switch-over.
+    For brand-new databases we simply run `upgrade head`. Two legacy states are
+    handled transparently so no manual DB reset is required:
+
+    * Tables exist but no ``alembic_version`` row (DBs originally created via
+      ``Base.metadata.create_all``) -- stamp the 0001 baseline first.
+    * ``alembic_version`` points at a revision that no longer exists in the
+      scripts directory (DBs that ran the pre-squash 0001..0004 chain) --
+      re-stamp to the current baseline. The schema is already at-or-beyond the
+      squashed baseline, so this is a metadata-only fix.
     """
     backend_root = Path(__file__).resolve().parents[1]
     alembic_ini = backend_root / "alembic.ini"
@@ -37,6 +41,7 @@ def _run_schema_setup() -> None:
 
     from alembic import command
     from alembic.config import Config
+    from alembic.script import ScriptDirectory
 
     cfg = Config(str(alembic_ini))
     cfg.set_main_option("script_location", str(migrations_dir))
@@ -46,9 +51,26 @@ def _run_schema_setup() -> None:
     existing_tables = set(inspector.get_table_names())
     has_app_tables = "stocks" in existing_tables or "users" in existing_tables
     has_alembic = "alembic_version" in existing_tables
-    if has_app_tables and not has_alembic:
+
+    if has_alembic:
+        script_dir = ScriptDirectory.from_config(cfg)
+        known_revs = {rev.revision for rev in script_dir.walk_revisions()}
+        with engine.connect() as conn:
+            current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+        if current and current not in known_revs:
+            logger.info(
+                "Stale alembic_version=%s not in scripts - re-stamping to 0001_initial",
+                current,
+            )
+            # Raw UPDATE: command.stamp() would first try to resolve the
+            # existing (now unknown) revision and abort with a CommandError,
+            # so we bypass Alembic's revision walk for this metadata-only fix.
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE alembic_version SET version_num = '0001_initial'"))
+    elif has_app_tables:
         logger.info("Existing schema detected without alembic_version - stamping 0001_initial")
         command.stamp(cfg, "0001_initial")
+
     command.upgrade(cfg, "head")
     logger.info("Alembic migrations applied successfully.")
 

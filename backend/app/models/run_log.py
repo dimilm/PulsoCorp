@@ -24,6 +24,10 @@ class RunLog(Base):
     error_details: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+Index("ix_run_logs_phase", RunLog.phase)
+Index("ix_run_logs_started_at", RunLog.started_at)
+
+
 class RunStockStatus(Base):
     __tablename__ = "run_stock_status"
 

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Enum, Float, ForeignKey, Integer, String, Table, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utcnow
@@ -12,6 +12,7 @@ stock_tags = Table(
     Base.metadata,
     Column("isin", String(12), ForeignKey("stocks.isin", ondelete="CASCADE"), primary_key=True),
     Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_stock_tags_tag_id", "tag_id"),
 )
 
 
@@ -43,6 +44,11 @@ class Stock(Base):
     tags = relationship("Tag", secondary=stock_tags, lazy="selectin")
 
 
+Index("ix_stocks_sector", Stock.sector)
+Index("ix_stocks_burggraben", Stock.burggraben)
+Index("ix_stocks_name", Stock.name)
+
+
 class MarketData(Base):
     __tablename__ = "market_data"
 
@@ -54,6 +60,10 @@ class MarketData(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     stock = relationship("Stock", back_populates="market_data")
+
+
+Index("ix_market_data_last_status", MarketData.last_status)
+Index("ix_market_data_last_updated", MarketData.last_updated)
 
 
 class Metrics(Base):
@@ -104,3 +114,6 @@ class PriceHistory(Base):
     close: Mapped[float | None] = mapped_column(Float, nullable=True)
     volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+Index("ix_price_history_isin_interval", PriceHistory.isin, PriceHistory.interval)
