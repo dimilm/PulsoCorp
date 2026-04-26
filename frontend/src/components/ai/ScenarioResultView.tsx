@@ -1,3 +1,4 @@
+import { formatCurrency } from "../../lib/format";
 import type { ScenarioResult } from "./agentTypes";
 
 interface Props {
@@ -5,19 +6,9 @@ interface Props {
   currency?: string | null;
 }
 
-function formatCurrency(value: number, currency: string | null | undefined): string {
-  const code = currency || "EUR";
-  try {
-    return value.toLocaleString("de-DE", {
-      style: "currency",
-      currency: code,
-      maximumFractionDigits: 2,
-    });
-  } catch {
-    return `${value.toFixed(2)} ${code}`;
-  }
-}
-
+// Scenario probabilities/returns arrive as fractions (0..1); render as a
+// rounded percentage. The shared formatPercent helper expects pre-multiplied
+// values, so we keep this thin local wrapper.
 function formatPct(value: number): string {
   return `${(value * 100).toFixed(0)} %`;
 }

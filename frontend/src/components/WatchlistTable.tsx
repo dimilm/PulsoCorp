@@ -61,7 +61,8 @@ export default function WatchlistTable({
   refreshDisabled = false,
 }: Props) {
   return (
-    <table>
+    <div className="table-scroll">
+    <table className="watchlist-table">
       <thead>
         <tr>
           <SortHeader label="ISIN" keyName="isin" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
@@ -139,5 +140,6 @@ export default function WatchlistTable({
         ))}
       </tbody>
     </table>
+    </div>
   );
 }

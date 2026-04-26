@@ -20,6 +20,10 @@ _GEMINI_PRICES: dict[str, tuple[float, float]] = {
     "gemini-1.5-pro": (0.00125, 0.005),
     "gemini-2.0-flash": (0.0001, 0.0004),
     "gemini-2.0-pro": (0.00125, 0.005),
+    # Gemini 3 preview pricing not officially published yet — placeholder
+    # mirrors the 2.0 flash tier so cost estimates aren't ``None``. Update
+    # once Google announces final pricing.
+    "gemini-3-flash": (0.0001, 0.0004),
 }
 
 

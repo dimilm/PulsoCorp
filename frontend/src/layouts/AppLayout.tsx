@@ -2,15 +2,15 @@ import { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
 import { LogoutButton } from "../components/LogoutButton";
-import type { AuthUser } from "../hooks/useAuth";
+import { ThemeToggle } from "../components/ThemeToggle";
+import { useAuth } from "../hooks/useAuth";
 
 interface Props {
-  user: AuthUser;
-  onLoggedOut: () => void;
   children: ReactNode;
 }
 
-export function AppLayout({ user, onLoggedOut, children }: Props) {
+export function AppLayout({ children }: Props) {
+  const { user } = useAuth();
   return (
     <>
       {user && (
@@ -28,7 +28,8 @@ export function AppLayout({ user, onLoggedOut, children }: Props) {
             Settings
           </NavLink>
           <span className="nav-user">{user.username}</span>
-          <LogoutButton onLoggedOut={onLoggedOut} />
+          <ThemeToggle />
+          <LogoutButton />
         </nav>
       )}
       {children}

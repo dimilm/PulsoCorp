@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { Spinner } from "../components/Spinner";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { extractApiError } from "../lib/apiError";
 import { ColorThresholds, defaultThresholds } from "../lib/colorRules";
 
@@ -33,13 +34,13 @@ const AI_PROVIDERS = [
 
 const MODEL_PRESETS: Record<string, string[]> = {
   openai: ["gpt-4o-mini", "gpt-4o"],
-  gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+  gemini: ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
   ollama: [],
 };
 
 const DEFAULT_MODEL: Record<string, string> = {
   openai: "gpt-4o-mini",
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3-flash-preview",
   ollama: "llama3",
 };
 
@@ -69,6 +70,7 @@ function parseTime(value: string): { hour: number; minute: number } | null {
 }
 
 export function SettingsPage() {
+  useDocumentTitle("Einstellungen");
   const [settings, setSettings] = useState<SettingsState | null>(null);
   const [initialSettings, setInitialSettings] = useState<SettingsState | null>(null);
   const [thresholds, setThresholds] = useState<ColorThresholds>(defaultThresholds);
@@ -109,7 +111,7 @@ export function SettingsPage() {
 
   const isDirty = useMemo(() => {
     if (!settings || !initialSettings) return false;
-    if (editKey && apiKey) return true;
+    if (apiKey.trim()) return true;
     if (JSON.stringify(settings) !== JSON.stringify(initialSettings)) return true;
     if (JSON.stringify(thresholds) !== JSON.stringify(initialThresholds)) return true;
     return false;
@@ -129,8 +131,8 @@ export function SettingsPage() {
         ai_model: settings.ai_model,
         ai_refresh_interval: settings.ai_refresh_interval,
       };
-      if (editKey && apiKey) {
-        payload.ai_api_key = apiKey;
+      if (apiKey.trim()) {
+        payload.ai_api_key = apiKey.trim();
       }
       const res = await api.put("/settings", payload);
       const fresh = res.data as SettingsState;

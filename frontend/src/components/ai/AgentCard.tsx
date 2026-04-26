@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { extractApiError } from "../../lib/apiError";
+import { formatDate } from "../../lib/format";
 import type { AgentInfo, AIRun } from "../../types";
 import { Modal } from "../Modal";
 import { Spinner } from "../Spinner";
@@ -12,21 +13,6 @@ interface Props {
   agent: AgentInfo;
   isin: string;
   currency?: string | null;
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "–";
-  try {
-    return new Date(value).toLocaleString("de-DE", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return value;
-  }
 }
 
 function summariseRun(run: AIRun): string {

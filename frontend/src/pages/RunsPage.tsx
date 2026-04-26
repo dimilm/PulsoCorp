@@ -4,15 +4,22 @@ import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { Spinner } from "../components/Spinner";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   useCancelRefreshAll,
   useTriggerRefreshAll,
 } from "../hooks/useStockMutations";
+import { extractApiError } from "../lib/apiError";
+import { formatDateTime, formatDuration } from "../lib/format";
+import { toast } from "../lib/toast";
 import {
+  liveRunSeconds,
+  liveStockSeconds,
   nextPollInterval,
   phaseLabel,
   runStatusLabel,
   STEP_STATUS_LABEL,
+  useCurrentRun,
 } from "../lib/runProgress";
 import {
   RunStep,
@@ -41,37 +48,8 @@ function StepCell({ step, label }: { step: RunStep; label: string }) {
   );
 }
 
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "medium" });
-}
-
-function formatDuration(seconds: number | null | undefined): string {
-  if (!seconds || seconds <= 0) return "—";
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return s ? `${m}m ${s}s` : `${m}m`;
-}
-
-function liveDuration(run: RunSummary): number {
-  if (run.duration_seconds && run.phase === "finished") return run.duration_seconds;
-  if (!run.started_at) return 0;
-  const startedMs = new Date(run.started_at).getTime();
-  if (Number.isNaN(startedMs)) return run.duration_seconds || 0;
-  const endMs = run.finished_at ? new Date(run.finished_at).getTime() : Date.now();
-  return Math.max(0, Math.round((endMs - startedMs) / 1000));
-}
-
 function formatStockDuration(s: RunStockStatus): string {
-  if (!s.started_at) return "—";
-  const start = new Date(s.started_at).getTime();
-  const end = s.finished_at ? new Date(s.finished_at).getTime() : Date.now();
-  if (Number.isNaN(start) || Number.isNaN(end)) return "—";
-  const seconds = Math.max(0, Math.round((end - start) / 1000));
-  return formatDuration(seconds);
+  return formatDuration(liveStockSeconds(s));
 }
 
 function RunSummaryItem({
@@ -120,46 +98,51 @@ function FilterPill({
 }
 
 export function RunsPage() {
+  useDocumentTitle("Runs");
   const queryClient = useQueryClient();
   const triggerRefresh = useTriggerRefreshAll();
   const cancelRefresh = useCancelRefreshAll();
+
+  const startRefresh = () =>
+    triggerRefresh.mutate(undefined, {
+      onError: (err) =>
+        toast.error(extractApiError(err, "Refresh-All konnte nicht gestartet werden.")),
+    });
+  const stopRefresh = () =>
+    cancelRefresh.mutate(undefined, {
+      onSuccess: (res) => {
+        if (res?.cancelled) toast.success("Lauf wird abgebrochen.");
+        else toast.info(res?.reason ?? "Lauf konnte nicht abgebrochen werden.");
+      },
+      onError: (err) =>
+        toast.error(extractApiError(err, "Abbruch fehlgeschlagen.")),
+    });
   const [showHistory, setShowHistory] = useState(false);
   const [filter, setFilter] = useState<
     "all" | "running" | "error" | "done" | "not_started" | "cancelled"
   >("all");
 
-  // Track how often we've polled the current run so we can back off the
-  // refetch interval for long-running jobs.
-  const tickRef = useRef(0);
-
-  const currentQuery = useQuery<RunSummary | null>({
-    queryKey: ["run-current"],
-    queryFn: async () => (await api.get("/run-logs/current")).data,
-    refetchInterval: (query) => {
-      const data = query.state.data as RunSummary | null | undefined;
-      if (!data || data.phase === "finished") {
-        tickRef.current = 0;
-        return false;
-      }
-      const next = nextPollInterval(tickRef.current);
-      tickRef.current += 1;
-      return next;
-    },
-    placeholderData: keepPreviousData,
-  });
-  const current = currentQuery.data ?? null;
+  const { data: current, isLoading: isLoadingCurrent } = useCurrentRun();
   const runId = current?.id ?? null;
   const isRunning = current?.phase !== "finished" && current != null;
 
+  // Per-stock query owns its own backoff counter; the previous shared tickRef
+  // entangled with the inline summary query, which we now get from the shared
+  // useCurrentRun() hook.
+  const stocksTickRef = useRef(0);
   const stocksQuery = useQuery<RunStockStatus[]>({
     queryKey: ["run-stocks", runId],
     queryFn: async () =>
       runId == null ? [] : (await api.get(`/run-logs/${runId}/stocks`)).data,
     enabled: runId != null,
-    refetchInterval: (query) => {
-      if (!isRunning) return false;
-      // Reuse the same backoff as the summary so the two queries stay in sync.
-      return nextPollInterval(Math.max(0, tickRef.current - 1));
+    refetchInterval: () => {
+      if (!isRunning) {
+        stocksTickRef.current = 0;
+        return false;
+      }
+      const next = nextPollInterval(stocksTickRef.current);
+      stocksTickRef.current += 1;
+      return next;
     },
     placeholderData: keepPreviousData,
   });
@@ -202,7 +185,7 @@ export function RunsPage() {
     return stocks.filter((s) => s.overall_status === filter);
   }, [stocks, filter]);
 
-  if (currentQuery.isLoading && !current) {
+  if (isLoadingCurrent && !current) {
     return (
       <div className="page">
         <Spinner label="Lade Laufstatus…" />
@@ -221,7 +204,7 @@ export function RunsPage() {
             <button
               type="button"
               className="btn-primary"
-              onClick={() => triggerRefresh.mutate()}
+              onClick={() => startRefresh()}
               disabled={triggerRefresh.isPending}
             >
               Jetzt aktualisieren
@@ -248,7 +231,7 @@ export function RunsPage() {
             <button
               type="button"
               className="btn-primary"
-              onClick={() => triggerRefresh.mutate()}
+              onClick={() => startRefresh()}
               disabled={isRunning || triggerRefresh.isPending}
               title={isRunning ? "Es läuft bereits ein Update" : "Jetzt aktualisieren"}
             >
@@ -302,7 +285,7 @@ export function RunsPage() {
             <button
               type="button"
               className="btn-danger"
-              onClick={() => cancelRefresh.mutate()}
+              onClick={() => stopRefresh()}
               disabled={cancelRefresh.isPending}
               title="Den laufenden Update-Job abbrechen"
             >
@@ -312,7 +295,7 @@ export function RunsPage() {
           <button
             type="button"
             className="btn-primary"
-            onClick={() => triggerRefresh.mutate()}
+            onClick={() => startRefresh()}
             disabled={isRunning || triggerRefresh.isPending}
             title={isRunning ? "Es läuft bereits ein Update" : "Jetzt aktualisieren"}
           >
@@ -331,7 +314,7 @@ export function RunsPage() {
             value={
               current.phase === "finished"
                 ? formatDateTime(current.finished_at)
-                : formatDuration(liveDuration(current))
+                : formatDuration(liveRunSeconds(current), { dashOnZero: false })
             }
           />
           <RunSummaryItem label="Fortschritt" value={`${done} / ${total}`} sub={`${progressPct} %`} />

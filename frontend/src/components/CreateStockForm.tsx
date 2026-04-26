@@ -13,8 +13,7 @@ export interface StockFormValues {
 
 export type StockFormErrors = Partial<Record<keyof StockFormValues, string>>;
 
-interface StockFormProps {
-  mode: "create" | "edit";
+interface CreateStockFormProps {
   formId: string;
   values: StockFormValues;
   onChange: (next: StockFormValues) => void;
@@ -25,15 +24,17 @@ interface StockFormProps {
 
 const KNOWN_CURRENCIES = ["EUR", "USD", "CHF", "GBP", "JPY"] as const;
 
-export function StockForm({
-  mode,
+// Form for the "Unternehmen hinzufügen" modal on the watchlist. Editing
+// existing stocks is handled by the dedicated StockEditPage – this component
+// always renders the ISIN field and is intentionally not reusable for edit.
+export function CreateStockForm({
   formId,
   values,
   onChange,
   onSubmit,
   errors = {},
   tagSuggestions = [],
-}: StockFormProps) {
+}: CreateStockFormProps) {
   const set = <K extends keyof StockFormValues>(key: K, v: StockFormValues[K]) =>
     onChange({ ...values, [key]: v });
 
@@ -51,30 +52,28 @@ export function StockForm({
       <fieldset className="form-section">
         <legend>Stammdaten</legend>
 
-        {mode === "create" ? (
-          <div className={`field ${errors.isin ? "has-error" : ""}`}>
-            <label htmlFor={`${formId}-isin`}>
-              ISIN <span className="required" aria-hidden="true">*</span>
-            </label>
-            <input
-              id={`${formId}-isin`}
-              value={values.isin}
-              onChange={(e) => set("isin", e.target.value.toUpperCase().replace(/\s+/g, ""))}
-              placeholder="z. B. DE0007164600"
-              maxLength={12}
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
-            <div className="field-meta">
-              <span className="helper">12 Zeichen, Buchstaben & Ziffern</span>
-              {values.isin.length > 0 && isinRemaining > 0 && (
-                <span className="helper helper-soft">noch {isinRemaining}</span>
-              )}
-            </div>
-            {errors.isin && <div className="field-error">{errors.isin}</div>}
+        <div className={`field ${errors.isin ? "has-error" : ""}`}>
+          <label htmlFor={`${formId}-isin`}>
+            ISIN <span className="required" aria-hidden="true">*</span>
+          </label>
+          <input
+            id={`${formId}-isin`}
+            value={values.isin}
+            onChange={(e) => set("isin", e.target.value.toUpperCase().replace(/\s+/g, ""))}
+            placeholder="z. B. DE0007164600"
+            maxLength={12}
+            autoComplete="off"
+            spellCheck={false}
+            required
+          />
+          <div className="field-meta">
+            <span className="helper">12 Zeichen, Buchstaben & Ziffern</span>
+            {values.isin.length > 0 && isinRemaining > 0 && (
+              <span className="helper helper-soft">noch {isinRemaining}</span>
+            )}
           </div>
-        ) : null}
+          {errors.isin && <div className="field-error">{errors.isin}</div>}
+        </div>
 
         <div className={`field ${errors.name ? "has-error" : ""}`}>
           <label htmlFor={`${formId}-name`}>
@@ -192,4 +191,4 @@ export function StockForm({
   );
 }
 
-export default StockForm;
+export default CreateStockForm;

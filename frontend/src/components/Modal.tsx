@@ -1,5 +1,7 @@
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
+
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import { XIcon } from "./icons";
 
 interface ModalProps {
@@ -12,6 +14,9 @@ interface ModalProps {
   closeOnBackdrop?: boolean;
 }
 
+/** Top-level Modal component. Renders into a portal so it can escape ancestor
+ *  stacking contexts. Side effects (Esc key, body scroll lock, focus trap)
+ *  only run while the modal is mounted to avoid leaking listeners. */
 export function Modal({
   open,
   onClose,
@@ -21,40 +26,40 @@ export function Modal({
   footer,
   closeOnBackdrop = true,
 }: ModalProps) {
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || !cardRef.current) return;
-    const focusable = cardRef.current.querySelector<HTMLElement>(
-      'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])'
-    );
-    focusable?.focus();
-  }, [open]);
-
   if (!open) return null;
-
   return createPortal(
+    <ModalShell
+      onClose={onClose}
+      title={title}
+      subtitle={subtitle}
+      footer={footer}
+      closeOnBackdrop={closeOnBackdrop}
+    >
+      {children}
+    </ModalShell>,
+    document.body
+  );
+}
+
+interface ShellProps {
+  onClose: () => void;
+  title: string;
+  subtitle?: ReactNode;
+  footer?: ReactNode;
+  closeOnBackdrop: boolean;
+  children: ReactNode;
+}
+
+function ModalShell({ onClose, title, subtitle, footer, closeOnBackdrop, children }: ShellProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const subtitleId = useId();
+
+  useEsc(onClose);
+  useBodyScrollLock();
+  useFocusTrap(cardRef, true);
+
+  return (
     <div
       className="modal-backdrop"
       onMouseDown={(e) => {
@@ -65,13 +70,19 @@ export function Modal({
         className="modal-card"
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
+        aria-describedby={subtitle ? subtitleId : undefined}
         ref={cardRef}
+        tabIndex={-1}
       >
         <header className="modal-header">
           <div className="modal-header-text">
-            <h3>{title}</h3>
-            {subtitle && <div className="modal-subtitle">{subtitle}</div>}
+            <h3 id={titleId}>{title}</h3>
+            {subtitle && (
+              <div id={subtitleId} className="modal-subtitle">
+                {subtitle}
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -85,9 +96,31 @@ export function Modal({
         <div className="modal-body">{children}</div>
         {footer && <footer className="modal-footer">{footer}</footer>}
       </div>
-    </div>,
-    document.body
+    </div>
   );
+}
+
+function useEsc(onClose: () => void) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+}
+
+function useBodyScrollLock() {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
 }
 
 export default Modal;

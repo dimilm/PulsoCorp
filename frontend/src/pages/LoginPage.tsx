@@ -2,14 +2,13 @@ import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api, setCsrfToken } from "../api/client";
+import { useAuth } from "../hooks/useAuth";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { extractApiError } from "../lib/apiError";
-import type { AuthUser } from "../hooks/useAuth";
 
-interface Props {
-  onLogin: (user: AuthUser) => void;
-}
-
-export function LoginPage({ onLogin }: Props) {
+export function LoginPage() {
+  useDocumentTitle("Login");
+  const { setUser } = useAuth();
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("changeme");
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +22,7 @@ export function LoginPage({ onLogin }: Props) {
     try {
       const res = await api.post("/auth/login", { username, password });
       setCsrfToken(res.data.csrf_token);
-      onLogin({ username: res.data.username, role: res.data.role });
+      setUser({ username: res.data.username, role: res.data.role });
       nav("/");
     } catch (err) {
       setError(extractApiError(err, "Login fehlgeschlagen"));

@@ -27,11 +27,14 @@ export function buildStocksParams(v: FilterValues) {
  *
  * Returns both the *current* values (bound to inputs) and the *debounced*
  * values (suitable for query keys). `applyValues` bypasses the debounce so
- * preset selection feels instant.
+ * preset selection or URL hydration feels instant.
+ *
+ * Callers can pass `initial` to seed the form (e.g. from `?q=…` query params)
+ * without triggering a debounce on first render.
  */
-export function useWatchlistFilters() {
-  const [values, setValues] = useState<FilterValues>(emptyFilters);
-  const [debounced, setDebounced] = useState<FilterValues>(emptyFilters);
+export function useWatchlistFilters(initial: FilterValues = emptyFilters) {
+  const [values, setValues] = useState<FilterValues>(initial);
+  const [debounced, setDebounced] = useState<FilterValues>(initial);
   const skipDebounceRef = useRef(false);
 
   const memoValues = useMemo(() => values, [values]);

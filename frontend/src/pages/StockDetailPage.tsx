@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   CartesianGrid,
   Line,
@@ -13,14 +13,23 @@ import {
 } from "recharts";
 
 import { api } from "../api/client";
-import { AIAgentsPanel } from "../components/ai/AIAgentsPanel";
+import { EmptyState } from "../components/EmptyState";
 import { Spinner } from "../components/Spinner";
+
+// AI panel lazy-loads in its own chunk so the much smaller "Kursverlauf +
+// Kennzahlen + Audit"-Block above the fold can paint immediately while the
+// (relatively big) AI bundle is still downloading.
+const AIAgentsPanel = lazy(() =>
+  import("../components/ai/AIAgentsPanel").then((m) => ({ default: m.AIAgentsPanel }))
+);
 import {
   RefreshKickoff,
   STOCKS_QUERY_KEY,
   useDeleteStock,
   useRefreshStock,
 } from "../hooks/useStockMutations";
+import { useChartTheme } from "../hooks/useChartTheme";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useStock, useStockHistory, useStockPeers } from "../hooks/useStockQueries";
 import { extractApiError } from "../lib/apiError";
 import {
@@ -29,7 +38,19 @@ import {
   dividendClass,
   targetClass,
 } from "../lib/colorRules";
+import { confirm } from "../lib/dialogs";
+import { toast } from "../lib/toast";
 import {
+  formatCurrency,
+  formatDate,
+  formatDuration,
+  formatLargeCurrency,
+  formatNumber,
+  formatPercent,
+  formatTimeShort,
+} from "../lib/format";
+import {
+  liveRunSeconds,
   nextPollInterval,
   phaseLabel,
   STEP_STATUS_LABEL,
@@ -37,7 +58,7 @@ import {
 } from "../lib/runProgress";
 import { tagColorClass } from "../lib/tagColor";
 import type { HistoryRange, Stock } from "../types";
-import type { RunStockStatus, RunSummary, StepStatus } from "../types/run";
+import type { RunStockStatus, StepStatus } from "../types/run";
 
 const RANGE_LABELS: { key: HistoryRange; label: string }[] = [
   { key: "1m", label: "1M" },
@@ -47,67 +68,14 @@ const RANGE_LABELS: { key: HistoryRange; label: string }[] = [
   { key: "max", label: "Max" },
 ];
 
-function formatNumber(value: number | null | undefined, fractionDigits = 2): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "–";
-  return value.toLocaleString("de-DE", {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  });
-}
+const VALID_RANGES = new Set<HistoryRange>(["1m", "6m", "1y", "5y", "max"]);
+const DEFAULT_RANGE: HistoryRange = "1y";
 
-function formatPercent(value: number | null | undefined, fractionDigits = 2): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "–";
-  return `${value > 0 ? "+" : ""}${value.toFixed(fractionDigits)} %`;
-}
-
-function formatCurrency(value: number | null | undefined, currency: string | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "–";
-  const code = currency || "EUR";
-  try {
-    return value.toLocaleString("de-DE", {
-      style: "currency",
-      currency: code,
-      maximumFractionDigits: 2,
-    });
-  } catch {
-    return `${value.toFixed(2)} ${code}`;
+function parseRangeParam(value: string | null): HistoryRange {
+  if (value && VALID_RANGES.has(value as HistoryRange)) {
+    return value as HistoryRange;
   }
-}
-
-function formatLargeCurrency(value: number | null | undefined, currency: string | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "–";
-  const code = currency || "EUR";
-  const abs = Math.abs(value);
-  let scaled: number;
-  let suffix: string;
-  if (abs >= 1e12) {
-    scaled = value / 1e12;
-    suffix = "Bio.";
-  } else if (abs >= 1e9) {
-    scaled = value / 1e9;
-    suffix = "Mrd.";
-  } else if (abs >= 1e6) {
-    scaled = value / 1e6;
-    suffix = "Mio.";
-  } else {
-    return formatCurrency(value, code);
-  }
-  return `${scaled.toLocaleString("de-DE", { maximumFractionDigits: 2 })} ${suffix} ${code}`;
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return "–";
-  try {
-    return new Date(value).toLocaleString("de-DE", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return value;
-  }
+  return DEFAULT_RANGE;
 }
 
 interface KpiTileProps {
@@ -133,9 +101,23 @@ interface HistoryChartProps {
 }
 
 function HistoryChart({ isin, stock }: HistoryChartProps) {
-  const [range, setRange] = useState<HistoryRange>("1y");
+  // Persist the chosen range in `?range=…` so deep links to a detail page
+  // restore the user's preferred zoom level. Anything unknown / missing falls
+  // back to the default.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const range = parseRangeParam(searchParams.get("range"));
+  const setRange = (next: HistoryRange) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === DEFAULT_RANGE) {
+      params.delete("range");
+    } else {
+      params.set("range", next);
+    }
+    setSearchParams(params, { replace: true });
+  };
   const historyQuery = useStockHistory(isin, range);
   const points = historyQuery.data?.points ?? [];
+  const chartTheme = useChartTheme();
 
   const chartData = useMemo(
     () =>
@@ -200,7 +182,7 @@ function HistoryChart({ isin, stock }: HistoryChartProps) {
           <div className="detail-chart-body">
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="#e5e7eb" vertical={false} />
+                <CartesianGrid stroke={chartTheme.grid} vertical={false} />
                 <XAxis
                   dataKey="date"
                   tickFormatter={(value: string) => {
@@ -212,13 +194,15 @@ function HistoryChart({ isin, stock }: HistoryChartProps) {
                     return d.toLocaleDateString("de-DE", { year: "numeric" });
                   }}
                   minTickGap={32}
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
+                  tick={{ fontSize: 11, fill: chartTheme.tick }}
+                  stroke={chartTheme.grid}
                 />
                 <YAxis
                   domain={yDomain}
-                  tick={{ fontSize: 11, fill: "#6b7280" }}
+                  tick={{ fontSize: 11, fill: chartTheme.tick }}
                   tickFormatter={(v: number) => v.toFixed(0)}
                   width={48}
+                  stroke={chartTheme.grid}
                 />
                 <Tooltip
                   formatter={(value) => [
@@ -232,11 +216,18 @@ function HistoryChart({ isin, stock }: HistoryChartProps) {
                       year: "numeric",
                     })
                   }
+                  contentStyle={{
+                    background: chartTheme.tooltipBackground,
+                    border: `1px solid ${chartTheme.tooltipBorder}`,
+                    color: chartTheme.tooltipText,
+                  }}
+                  labelStyle={{ color: chartTheme.tooltipText }}
+                  itemStyle={{ color: chartTheme.tooltipText }}
                 />
                 <Line
                   type="monotone"
                   dataKey="close"
-                  stroke="#2563eb"
+                  stroke={chartTheme.line}
                   strokeWidth={2}
                   dot={false}
                   isAnimationActive={false}
@@ -350,62 +341,31 @@ function StepRow({ label, status, error }: { label: string; status: StepStatus; 
   );
 }
 
-function formatTimeShort(value: string | null | undefined): string {
-  if (!value) return "–";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-function liveDurationSeconds(run: RunSummary): number {
-  if (run.duration_seconds && run.phase === "finished") return run.duration_seconds;
-  if (!run.started_at) return 0;
-  const startedMs = new Date(run.started_at).getTime();
-  if (Number.isNaN(startedMs)) return run.duration_seconds || 0;
-  const endMs = run.finished_at ? new Date(run.finished_at).getTime() : Date.now();
-  return Math.max(0, Math.round((endMs - startedMs) / 1000));
-}
-
-function formatDurationShort(seconds: number): string {
-  if (seconds <= 0) return "0s";
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return s ? `${m}m ${s}s` : `${m}m`;
-}
-
 // Inline status panel for the per-stock "Marktdaten aktualisieren" action.
 function RefreshStatusCard({ isin, kickoff }: RefreshStatusCardProps) {
   const qc = useQueryClient();
-  const tickRef = useRef(0);
-
-  const currentQuery = useQuery<RunSummary | null>({
-    queryKey: ["run-current"],
-    queryFn: async () => (await api.get("/run-logs/current")).data,
-    refetchInterval: (query) => {
-      const data = query.state.data as RunSummary | null | undefined;
-      if (!data || data.phase === "finished") {
-        tickRef.current = 0;
-        return false;
-      }
-      const next = nextPollInterval(tickRef.current);
-      tickRef.current += 1;
-      return next;
-    },
-    placeholderData: keepPreviousData,
-  });
-  const current = currentQuery.data ?? null;
+  const { data: current } = useCurrentRun();
   const isRunning = current != null && current.phase !== "finished";
   const isSingleRun = current != null && current.stocks_total === 1;
   const runId = current?.id ?? null;
 
+  // Local backoff tick for the per-stock query (no longer entangled with the
+  // shared current-run hook).
+  const stocksTickRef = useRef(0);
   const stocksQuery = useQuery<RunStockStatus[]>({
     queryKey: ["run-stocks", runId],
     queryFn: async () =>
       runId == null ? [] : (await api.get(`/run-logs/${runId}/stocks`)).data,
     enabled: runId != null && isSingleRun,
-    refetchInterval: () =>
-      isRunning && isSingleRun ? nextPollInterval(Math.max(0, tickRef.current - 1)) : false,
+    refetchInterval: () => {
+      if (!isRunning || !isSingleRun) {
+        stocksTickRef.current = 0;
+        return false;
+      }
+      const next = nextPollInterval(stocksTickRef.current);
+      stocksTickRef.current += 1;
+      return next;
+    },
     placeholderData: keepPreviousData,
   });
   const myStock = (stocksQuery.data ?? []).find((s) => s.isin === isin) ?? null;
@@ -459,8 +419,8 @@ function RefreshStatusCard({ isin, kickoff }: RefreshStatusCardProps) {
     : "Marktdaten-Update fehlgeschlagen";
 
   const subLabel = isRunning
-    ? `Run #${current.id} · ${phaseLabel(current.phase)} · ${formatDurationShort(liveDurationSeconds(current))}`
-    : `Run #${current.id} · Fertig um ${formatTimeShort(current.finished_at)} · ${formatDurationShort(liveDurationSeconds(current))}`;
+    ? `Run #${current.id} · ${phaseLabel(current.phase)} · ${formatDuration(liveRunSeconds(current), { dashOnZero: false })}`
+    : `Run #${current.id} · Fertig um ${formatTimeShort(current.finished_at)} · ${formatDuration(liveRunSeconds(current), { dashOnZero: false })}`;
 
   return (
     <section
@@ -514,8 +474,9 @@ export function StockDetailPage() {
   const deleteMutation = useDeleteStock();
   const stock = stockQuery.data;
   const refreshKickoff = refreshMutation.data ?? null;
+  useDocumentTitle(stock?.name ?? null);
 
-  const currentRun = useCurrentRun();
+  const { data: currentRun } = useCurrentRun();
   const isRefreshInFlight =
     refreshMutation.isPending ||
     (currentRun != null && currentRun.phase !== "finished");
@@ -556,19 +517,25 @@ export function StockDetailPage() {
     try {
       await refreshMutation.mutateAsync(isin!);
     } catch (err) {
-      console.error("Refresh kickoff failed", err);
+      toast.error(extractApiError(err, "Aktualisierung konnte nicht gestartet werden."));
     }
   }
 
   async function handleDelete() {
     if (!stock) return;
-    const ok = window.confirm(`Unternehmen ${stock.name} (${stock.isin}) wirklich löschen?`);
+    const ok = await confirm({
+      title: "Unternehmen löschen",
+      message: `Unternehmen ${stock.name} (${stock.isin}) wirklich löschen?`,
+      destructive: true,
+      confirmLabel: "Löschen",
+    });
     if (!ok) return;
     try {
       await deleteMutation.mutateAsync(isin!);
+      toast.success(`${stock.name} gelöscht.`);
       navigate("/watchlist");
     } catch (err) {
-      alert(extractApiError(err, "Löschen fehlgeschlagen."));
+      toast.error(extractApiError(err, "Löschen fehlgeschlagen."));
     }
   }
 
@@ -730,16 +697,32 @@ export function StockDetailPage() {
         </div>
       </section>
 
-      <AIAgentsPanel isin={isin} />
+      <Suspense fallback={<Spinner label="Lade KI-Analysen…" />}>
+        <AIAgentsPanel isin={isin} />
+      </Suspense>
 
-      {stock.reasoning && (
-        <section className="detail-card">
-          <div className="detail-card-head">
-            <h3>Eigene Notizen</h3>
-          </div>
+      <section className="detail-card">
+        <div className="detail-card-head">
+          <h3>Eigene Notizen</h3>
+          <Link to={`/stocks/${isin}/edit`} className="detail-card-hint detail-card-hint-link">
+            {stock.reasoning ? "Notiz bearbeiten" : "Notiz hinzufügen"}
+          </Link>
+        </div>
+        {stock.reasoning ? (
           <p className="detail-ai-text">{stock.reasoning}</p>
-        </section>
-      )}
+        ) : (
+          <EmptyState
+            variant="inline"
+            title="Noch keine Notizen"
+            description="Halte hier deine Investment-These, Beobachtungen oder offene Fragen fest – nur für dich."
+            action={
+              <Link to={`/stocks/${isin}/edit`} className="btn-secondary">
+                Notiz hinzufügen
+              </Link>
+            }
+          />
+        )}
+      </section>
 
       <PeersStrip isin={isin} />
 

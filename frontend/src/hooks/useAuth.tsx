@@ -1,20 +1,27 @@
-import { useEffect, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 
 import { api, AUTH_LOST_EVENT, setCsrfToken } from "../api/client";
 
 export type AuthUser = { username: string; role: string } | null;
 
+interface AuthContextValue {
+  user: AuthUser;
+  loading: boolean;
+  setUser: (user: AuthUser) => void;
+  logout: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
 /** Bootstrap the current session by hitting `/auth/me` once on mount.
  *
- * The hook also listens for the global `AUTH_LOST_EVENT` (emitted by the
- * axios 401 interceptor) so any subsequent failure logs the user out across
- * the whole app instead of silently leaving stale state in components.
- *
- * Note: `/auth/me` does NOT return a CSRF token. Token rotation happens
- * exclusively on `/login` and `/refresh`; in-flight calls read the value
- * straight from the (non-HttpOnly) CSRF cookie via the axios interceptor.
+ * Provides `user`, `loading`, `setUser` and `logout` via React Context so
+ * components don't have to thread the values through props. The provider also
+ * listens for the global `AUTH_LOST_EVENT` (emitted by the axios 401
+ * interceptor) so any subsequent failure logs the user out across the whole
+ * app instead of silently leaving stale state.
  */
-export function useAuth() {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser>(null);
   const [loading, setLoading] = useState(true);
 
@@ -48,7 +55,28 @@ export function useAuth() {
     return () => window.removeEventListener(AUTH_LOST_EVENT, onAuthLost);
   }, []);
 
-  return { user, setUser, loading };
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      loading,
+      setUser,
+      logout: async () => {
+        await logoutRequest();
+        setUser(null);
+      },
+    }),
+    [user, loading]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error("useAuth must be used inside <AuthProvider>");
+  }
+  return ctx;
 }
 
 export async function logoutRequest(): Promise<void> {

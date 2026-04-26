@@ -1,0 +1,71 @@
+# Build context starts at repo root (see `context: ..` in docker/docker-compose.yml).
+# Anything listed here is invisible to `docker build`, which:
+#   - keeps the build context small and fast,
+#   - prevents secrets and the live SQLite DB from accidentally landing in an image,
+#   - stops node_modules / .venv / __pycache__ from invalidating layer cache.
+#
+# If you add a new path that the Dockerfiles need (e.g. another file under
+# backend/ or docker/), make sure it is NOT matched by an entry here.
+
+# --- VCS & tooling ---------------------------------------------------------
+.git
+.gitattributes
+.gitignore
+.cursor
+.vscode
+.idea
+
+# --- Docs / repo metadata --------------------------------------------------
+docs
+README.md
+*.md
+
+# --- Secrets ---------------------------------------------------------------
+**/.env
+**/.env.*
+!**/.env.example
+docker/.env
+backend/.env
+
+# --- Local runtime data (DB, backups) --------------------------------------
+data
+backend/data
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Python ----------------------------------------------------------------
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
+**/*.egg-info
+**/.venv
+**/venv
+
+# --- Backend artefacts not needed inside the image -------------------------
+backend/tests
+backend/scripts
+
+# --- Node / frontend build artefacts ---------------------------------------
+**/node_modules
+frontend/dist
+frontend/.vite
+frontend/coverage
+
+# --- Docker host-side helpers (not used inside images) ---------------------
+docker/docker-compose.yml
+docker/restore-backups.sh
+docker/restore-backups.ps1
+docker/backup.sh
+# (backup.sh is bind-mounted at runtime, not COPYd into an image, so it
+# does not need to be in the build context.)
+
+# --- OS noise --------------------------------------------------------------
+**/.DS_Store
+**/Thumbs.db
+**/desktop.ini

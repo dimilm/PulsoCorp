@@ -1,3 +1,11 @@
+# Default logging policy. Anchored once and reused per service so we don't
+# end up with unbounded /var/lib/docker/containers/*-json.log files.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   backend:
     build:
@@ -24,6 +32,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+      # Cold start runs Alembic + seed import + yfinance imports, which can
+      # easily take longer than a single 30s interval. The grace period
+      # below stops failing probes from incrementing the retry counter
+      # during that window so the container does not flip to "unhealthy"
+      # while it is still legitimately starting.
+      start_period: 90s
+    # NOTE: deliberately NOT setting `security_opt: no-new-privileges` or
+    # `cap_drop` here. The entrypoint chowns /data and uses gosu to drop
+    # to the `app` user, which combination has reportedly broken under
+    # `no-new-privileges` on some Docker Desktop / WSL2 builds.
+    # NOTE: also deliberately NOT setting `deploy.resources.limits` -- the
+    # Alembic + seed_import + pandas/yfinance import bursts during startup
+    # comfortably exceed 768M and would silently OOM-kill the process,
+    # leaving the healthcheck to time out without a useful log line.
+    logging: *default-logging
     restart: unless-stopped
 
   frontend:
@@ -32,8 +55,21 @@ services:
       dockerfile: docker/Dockerfile.frontend
     ports:
       - "8080:80"
+    # Plain `service_started` (the implicit default) means the SPA is
+    # reachable on :8080 immediately even while Alembic is still running.
+    # Trade-off: the very first /api/* requests can return 502 for a few
+    # seconds. This is the lesser evil compared to `service_healthy`,
+    # which would block the SPA forever if the backend healthcheck fails
+    # for any reason.
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging: *default-logging
     restart: unless-stopped
 
   backup:
@@ -42,8 +78,14 @@ services:
       - app_data:/data
       - ./backup.sh:/backup.sh:ro
     command: ["sh", "/backup.sh"]
+    # Backup uses `sqlite3 .backup` against the live DB. Waiting for the
+    # backend to be healthy guarantees /data and the schema are in place
+    # before the first snapshot attempt -- and unlike for the frontend,
+    # blocking here is fine because there is nothing user-facing to serve.
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    logging: *default-logging
     restart: unless-stopped
 
 volumes:

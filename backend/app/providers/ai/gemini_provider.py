@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from app.providers.ai._retry import post_with_retry
 from app.providers.ai.base import AIProvider, CompletionResult
 from app.providers.ai.pricing import estimate_cost
 
@@ -38,8 +39,7 @@ class GeminiProvider(AIProvider):
             "generationConfig": {"temperature": 0, "maxOutputTokens": 1},
         }
         async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.post(self._url(), headers=self._headers(), json=body)
-            response.raise_for_status()
+            await post_with_retry(client, self._url(), headers=self._headers(), json=body)
 
     async def complete(
         self,
@@ -60,8 +60,9 @@ class GeminiProvider(AIProvider):
             body["generationConfig"]["responseMimeType"] = "application/json"
 
         async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(self._url(), headers=self._headers(), json=body)
-            response.raise_for_status()
+            response = await post_with_retry(
+                client, self._url(), headers=self._headers(), json=body
+            )
             data = response.json()
 
         raw_text = data["candidates"][0]["content"]["parts"][0]["text"]

@@ -1,0 +1,96 @@
+/* ---------- Responsive helpers --------------------------------------- */
+
+/* Horizontal scroll wrapper for wide tables (Watchlist, Runs).
+ * Keeps the page from blowing out horizontally on narrow screens while
+ * still letting users pan to see all columns. */
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 12px;
+}
+
+.table-scroll > table {
+  min-width: 980px;
+}
+
+.table-scroll > .run-table {
+  min-width: 720px;
+}
+
+/* Tablet & mobile breakpoints --------------------------------------- */
+
+@media (max-width: 768px) {
+  .page {
+    padding: 12px;
+  }
+
+  nav {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 12px;
+  }
+
+  nav .nav-user {
+    margin-left: 0;
+    order: 99;
+  }
+
+  .modal-backdrop {
+    padding: 24px 12px;
+  }
+
+  .modal-card {
+    max-width: 100%;
+  }
+
+  .modal-body {
+    max-height: calc(100vh - 180px);
+  }
+
+  .filter-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .page-header > * {
+    width: 100%;
+  }
+
+  .detail-hero {
+    padding: 16px;
+  }
+
+  .detail-hero-side {
+    width: 100%;
+  }
+
+  .detail-price-block,
+  .detail-rec-block {
+    align-items: flex-start;
+    width: 100%;
+  }
+}

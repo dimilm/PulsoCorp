@@ -1,0 +1,185 @@
+/* ============================================================================
+ * Design tokens
+ *
+ * Two layers:
+ *   1. Palette ("--c-*") - raw colour values, shared across themes.
+ *   2. Semantic tokens ("--bg-*", "--text-*", "--border-*", "--accent-*", ...)
+ *      that point at palette entries. Components reference the semantic layer
+ *      so that switching themes is a single block of overrides.
+ *
+ * Dark mode is opt-in via `<html data-theme="dark">` and falls back to the
+ * user's OS preference (`prefers-color-scheme: dark`) when no explicit choice
+ * has been persisted. Setting `data-theme="light"` forces light mode even on
+ * dark OSes.
+ *
+ * The migration to tokens is intentionally incremental: structural surfaces
+ * (body, nav, page, buttons, inputs, cards, modals, dialogs, table, empty
+ * states, error boundary, KPI/dashboard) read tokens, while semantic colour
+ * indicators (success/warning/danger backgrounds in lists, tag-pill palette,
+ * recharts axes) currently keep their light-mode literals - they communicate
+ * meaning, not theme, and can be migrated component-by-component later.
+ * ========================================================================== */
+
+:root {
+  /* Palette */
+  --c-white: #ffffff;
+  --c-slate-50: #f8fafc;
+  --c-slate-100: #f1f5f9;
+  --c-slate-200: #e2e8f0;
+  --c-slate-300: #cbd5e1;
+  --c-slate-400: #94a3b8;
+  --c-slate-500: #64748b;
+  --c-slate-600: #475569;
+  --c-slate-700: #334155;
+  --c-slate-800: #1e293b;
+  --c-slate-900: #0f172a;
+  --c-gray-50: #f9fafb;
+  --c-gray-100: #f3f4f6;
+  --c-gray-200: #e5e7eb;
+  --c-gray-300: #d1d5db;
+  --c-gray-400: #9ca3af;
+  --c-gray-500: #6b7280;
+  --c-gray-600: #4b5563;
+  --c-gray-700: #374151;
+  --c-gray-800: #1f2937;
+  --c-gray-900: #111827;
+  --c-blue-50: #eff6ff;
+  --c-blue-100: #dbeafe;
+  --c-blue-600: #2563eb;
+  --c-blue-700: #1d4ed8;
+  --c-red-100: #fee2e2;
+  --c-red-200: #fecaca;
+  --c-red-600: #dc2626;
+  --c-red-700: #b91c1c;
+  --c-red-800: #991b1b;
+  --c-page-light: #f7f7f9;
+  --c-page-dark: #0b1220;
+  --c-surface-dark: #131a2c;
+  --c-surface-2-dark: #1a2238;
+  --c-surface-3-dark: #1f2942;
+  --c-border-dark: #2a3450;
+  --c-border-strong-dark: #3f4b6e;
+
+  /* Semantic tokens (light theme defaults) */
+  --bg-page: var(--c-page-light);
+  --bg-surface: var(--c-white);
+  --bg-surface-2: var(--c-gray-50);
+  --bg-subtle: var(--c-gray-100);
+  --bg-elevated: var(--c-white);
+  --bg-nav: var(--c-gray-900);
+  --bg-overlay: rgba(15, 23, 42, 0.45);
+
+  --text-primary: var(--c-slate-900);
+  --text-secondary: var(--c-gray-500);
+  --text-muted: var(--c-gray-400);
+  --text-strong: var(--c-gray-900);
+  --text-inverted: var(--c-white);
+  --text-link: var(--c-blue-600);
+
+  --border-default: var(--c-gray-200);
+  --border-strong: var(--c-gray-300);
+  --border-subtle: var(--c-slate-100);
+
+  --accent: var(--c-blue-600);
+  --accent-hover: var(--c-blue-700);
+  --accent-soft-bg: rgba(37, 99, 235, 0.15);
+  --accent-soft-bg-strong: rgba(37, 99, 235, 0.3);
+
+  --danger: var(--c-red-700);
+  --danger-strong: var(--c-red-800);
+  --danger-bg: var(--c-red-100);
+  --danger-border: var(--c-red-200);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* Chart palette (read by useChartTheme; recharts cannot consume CSS vars
+   * directly because it needs literal stroke/fill values for its SVG props). */
+  --chart-grid: var(--c-gray-200);
+  --chart-tick: var(--c-gray-500);
+  --chart-line: var(--c-blue-600);
+  --chart-tooltip-bg: var(--c-white);
+  --chart-tooltip-border: var(--c-gray-200);
+  --chart-tooltip-text: var(--c-slate-900);
+}
+
+/* Dark mode: explicit override */
+:root[data-theme="dark"] {
+  --bg-page: var(--c-page-dark);
+  --bg-surface: var(--c-surface-dark);
+  --bg-surface-2: var(--c-surface-2-dark);
+  --bg-subtle: var(--c-surface-3-dark);
+  --bg-elevated: var(--c-surface-2-dark);
+  --bg-nav: #050a17;
+  --bg-overlay: rgba(0, 0, 0, 0.65);
+
+  --text-primary: var(--c-slate-100);
+  --text-secondary: var(--c-slate-400);
+  --text-muted: var(--c-slate-500);
+  --text-strong: var(--c-white);
+  --text-inverted: var(--c-slate-900);
+  --text-link: #60a5fa;
+
+  --border-default: var(--c-border-dark);
+  --border-strong: var(--c-border-strong-dark);
+  --border-subtle: var(--c-border-dark);
+
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-soft-bg: rgba(59, 130, 246, 0.18);
+  --accent-soft-bg-strong: rgba(59, 130, 246, 0.35);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.55);
+
+  --chart-grid: var(--c-border-dark);
+  --chart-tick: var(--c-slate-400);
+  --chart-line: #60a5fa;
+  --chart-tooltip-bg: var(--c-surface-2-dark);
+  --chart-tooltip-border: var(--c-border-strong-dark);
+  --chart-tooltip-text: var(--c-slate-100);
+}
+
+/* Dark mode: system preference fallback when the user has not chosen
+ * anything explicitly. Wrapped in `:not([data-theme])` so a saved
+ * `data-theme="light"` can defeat the OS preference. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg-page: var(--c-page-dark);
+    --bg-surface: var(--c-surface-dark);
+    --bg-surface-2: var(--c-surface-2-dark);
+    --bg-subtle: var(--c-surface-3-dark);
+    --bg-elevated: var(--c-surface-2-dark);
+    --bg-nav: #050a17;
+    --bg-overlay: rgba(0, 0, 0, 0.65);
+
+    --text-primary: var(--c-slate-100);
+    --text-secondary: var(--c-slate-400);
+    --text-muted: var(--c-slate-500);
+    --text-strong: var(--c-white);
+    --text-inverted: var(--c-slate-900);
+    --text-link: #60a5fa;
+
+    --border-default: var(--c-border-dark);
+    --border-strong: var(--c-border-strong-dark);
+    --border-subtle: var(--c-border-dark);
+
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --accent-soft-bg: rgba(59, 130, 246, 0.18);
+    --accent-soft-bg-strong: rgba(59, 130, 246, 0.35);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.55);
+
+    --chart-grid: var(--c-border-dark);
+    --chart-tick: var(--c-slate-400);
+    --chart-line: #60a5fa;
+    --chart-tooltip-bg: var(--c-surface-2-dark);
+    --chart-tooltip-border: var(--c-border-strong-dark);
+    --chart-tooltip-text: var(--c-slate-100);
+  }
+}

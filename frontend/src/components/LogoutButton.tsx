@@ -1,16 +1,12 @@
 import { useNavigate } from "react-router-dom";
 
-import { logoutRequest } from "../hooks/useAuth";
+import { useAuth } from "../hooks/useAuth";
 
-interface Props {
-  onLoggedOut: () => void;
-}
-
-export function LogoutButton({ onLoggedOut }: Props) {
+export function LogoutButton() {
+  const { logout } = useAuth();
   const nav = useNavigate();
   async function handleClick() {
-    await logoutRequest();
-    onLoggedOut();
+    await logout();
     nav("/login", { replace: true });
   }
   return (

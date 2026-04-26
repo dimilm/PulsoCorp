@@ -1,14 +1,16 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
+import { CreateStockForm, StockFormErrors, StockFormValues } from "../components/CreateStockForm";
 import { Dropdown, DropdownItem, DropdownSeparator } from "../components/Dropdown";
+import { EmptyState } from "../components/EmptyState";
 import { ChevronDownIcon, PlusIcon, SearchIcon, XIcon } from "../components/icons";
 import { Modal } from "../components/Modal";
 import { Spinner } from "../components/Spinner";
-import { StockForm, StockFormErrors, StockFormValues } from "../components/StockForm";
 import WatchlistTable from "../components/WatchlistTable";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   useDeleteStock,
   useRefreshStock,
@@ -23,7 +25,16 @@ import {
 } from "../hooks/useWatchlistFilters";
 import { extractApiError } from "../lib/apiError";
 import { ColorThresholds, defaultThresholds } from "../lib/colorRules";
+import { confirm, prompt } from "../lib/dialogs";
+import { toast } from "../lib/toast";
 import { useCurrentRun, useInvalidateOnRunFinish } from "../lib/runProgress";
+import { validateCreateStock } from "../lib/stockValidation";
+import {
+  buildWatchlistUrl,
+  parseWatchlistUrl,
+  searchParamsEqual,
+  type SortDir,
+} from "../lib/watchlistUrlState";
 import { Stock, Tag } from "../types";
 
 // Stable reference so React's effect-dep check does not re-run on every render.
@@ -45,50 +56,45 @@ interface ActiveFilter {
   clear: () => void;
 }
 
-function validateStock(values: StockFormValues, requireIsin: boolean): StockFormErrors {
-  const errs: StockFormErrors = {};
-  if (requireIsin) {
-    const isin = values.isin.trim().toUpperCase();
-    if (isin.length === 0) {
-      errs.isin = "ISIN ist ein Pflichtfeld.";
-    } else if (isin.length !== 12) {
-      errs.isin = "ISIN muss genau 12 Zeichen lang sein.";
-    } else if (!/^[A-Z0-9]{12}$/.test(isin)) {
-      errs.isin = "Nur Buchstaben und Ziffern erlaubt.";
-    }
-  }
-  if (!values.name.trim()) {
-    errs.name = "Name ist ein Pflichtfeld.";
-  }
-  if (values.tranches !== "") {
-    const numeric = Number(values.tranches);
-    if (!Number.isFinite(numeric) || !Number.isInteger(numeric) || numeric < 0) {
-      errs.tranches = "Bitte eine ganze Zahl ≥ 0 angeben.";
-    }
-  }
-  return errs;
-}
-
 export function WatchlistPage() {
+  useDocumentTitle("Watchlist");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const filters = useWatchlistFilters();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [sortBy, setSortBy] = useState("name");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // Seed filter + sort state from the URL exactly once. The page then mirrors
+  // both back into `?q=…&sortBy=…&sortDir=…` whenever the user changes them
+  // (debounced on the filters side), so refreshes, deep-links and the
+  // browser's back button all stay in sync without polluting the history.
+  const initialFromUrl = useMemo(
+    () => parseWatchlistUrl(searchParams),
+    // We intentionally read the URL only on mount: subsequent navigations
+    // inside the page should not reset the local state again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+  const filters = useWatchlistFilters(initialFromUrl.filters);
+
+  const [sortBy, setSortBy] = useState(initialFromUrl.sortBy);
+  const [sortDir, setSortDir] = useState<SortDir>(initialFromUrl.sortDir);
+
+  useEffect(() => {
+    const next = buildWatchlistUrl({
+      filters: filters.debounced,
+      sortBy,
+      sortDir,
+    });
+    if (searchParamsEqual(next, searchParams)) return;
+    setSearchParams(next, { replace: true });
+  }, [filters.debounced, sortBy, sortDir, searchParams, setSearchParams]);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [editingIsin, setEditingIsin] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createFieldErrors, setCreateFieldErrors] = useState<StockFormErrors>({});
-  const [editError, setEditError] = useState<string | null>(null);
-  const [editFieldErrors, setEditFieldErrors] = useState<StockFormErrors>({});
   const [thresholds, setThresholds] = useState<ColorThresholds>(defaultThresholds);
   const [savedPresets, setSavedPresets] = useState<Record<string, FilterValues>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [newStock, setNewStock] = useState<StockFormValues>(EMPTY_STOCK);
   const csvInputRef = useRef<HTMLInputElement | null>(null);
-  const [editStock, setEditStock] = useState<StockFormValues>(EMPTY_STOCK);
 
   const refreshMutation = useRefreshStock();
   const deleteMutation = useDeleteStock();
@@ -104,7 +110,7 @@ export function WatchlistPage() {
   // "Alle aktualisieren" item: the backend rejects parallel jobs with
   // `already_running`, so we disable the entry points instead of letting users
   // click into a 409.
-  const currentRun = useCurrentRun();
+  const { data: currentRun } = useCurrentRun();
   const isRunActive = currentRun != null && currentRun.phase !== "finished";
 
   const stocksQuery = useQuery<Stock[]>({
@@ -157,24 +163,33 @@ export function WatchlistPage() {
   }, []);
 
   async function refresh(isin: string) {
-    await refreshMutation.mutateAsync(isin);
+    try {
+      await refreshMutation.mutateAsync(isin);
+    } catch (error) {
+      toast.error(extractApiError(error, "Aktualisierung konnte nicht gestartet werden."));
+    }
   }
   async function triggerAll() {
     try {
       await triggerAllMutation.mutateAsync();
     } catch (error) {
-      console.error("refresh-all kickoff failed", error);
+      toast.error(extractApiError(error, "Refresh-All konnte nicht gestartet werden."));
+      return;
     }
     navigate("/runs");
   }
   async function exportCsv() {
-    const res = await api.get("/export/csv", { responseType: "blob" });
-    const url = URL.createObjectURL(new Blob([res.data], { type: "text/csv" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "watchlist.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    try {
+      const res = await api.get("/export/csv", { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "text/csv" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "watchlist.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(extractApiError(error, "Export fehlgeschlagen."));
+    }
   }
   async function uploadCsvFile(file: File) {
     try {
@@ -185,8 +200,9 @@ export function WatchlistPage() {
       form.append("file", file);
       await api.post("/import/csv", form);
       await invalidateStocks();
+      toast.success("CSV importiert.");
     } catch (err) {
-      alert(extractApiError(err, "Import fehlgeschlagen."));
+      toast.error(extractApiError(err, "Import fehlgeschlagen."));
     }
   }
 
@@ -197,17 +213,10 @@ export function WatchlistPage() {
     setNewStock(EMPTY_STOCK);
   }
 
-  function closeEditModal() {
-    setShowEditForm(false);
-    setEditingIsin(null);
-    setEditError(null);
-    setEditFieldErrors({});
-  }
-
   async function createStock(e: FormEvent) {
     e.preventDefault();
     setCreateError(null);
-    const errs = validateStock(newStock, true);
+    const errs = validateCreateStock(newStock);
     setCreateFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
     try {
@@ -227,55 +236,19 @@ export function WatchlistPage() {
     }
   }
 
-  function startEdit(stock: Stock) {
-    setEditingIsin(stock.isin);
-    setEditStock({
-      isin: stock.isin,
-      name: stock.name ?? "",
-      sector: stock.sector ?? "",
-      currency: stock.currency ?? "EUR",
-      burggraben: stock.burggraben,
-      tranches: stock.tranches != null ? String(stock.tranches) : "",
-      tags: Array.isArray(stock.tags) ? [...stock.tags] : [],
-    });
-    setEditError(null);
-    setEditFieldErrors({});
-    setShowEditForm(true);
-  }
-
-  async function saveEdit(e: FormEvent) {
-    e.preventDefault();
-    if (!editingIsin) return;
-    setEditError(null);
-    const errs = validateStock(editStock, false);
-    setEditFieldErrors(errs);
-    if (Object.keys(errs).length > 0) return;
-    try {
-      await api.patch(`/stocks/${editingIsin}`, {
-        name: editStock.name.trim(),
-        sector: editStock.sector.trim() || null,
-        currency: editStock.currency.trim().toUpperCase() || null,
-        burggraben: editStock.burggraben,
-        tranches: Math.max(0, Number(editStock.tranches) || 0),
-        tags: editStock.tags,
-      });
-      closeEditModal();
-      await invalidateStocks();
-    } catch (error) {
-      setEditError(extractApiError(error, "Unternehmen konnte nicht aktualisiert werden."));
-    }
-  }
-
   async function deleteStock(stock: Stock) {
-    const confirmed = window.confirm(`Unternehmen ${stock.name} (${stock.isin}) wirklich loeschen?`);
+    const confirmed = await confirm({
+      title: "Unternehmen löschen",
+      message: `Unternehmen ${stock.name} (${stock.isin}) wirklich löschen?`,
+      destructive: true,
+      confirmLabel: "Löschen",
+    });
     if (!confirmed) return;
     try {
       await deleteMutation.mutateAsync(stock.isin);
-      if (editingIsin === stock.isin) {
-        closeEditModal();
-      }
+      toast.success(`${stock.name} gelöscht.`);
     } catch (error) {
-      alert(extractApiError(error, "Loeschen fehlgeschlagen."));
+      toast.error(extractApiError(error, "Löschen fehlgeschlagen."));
     }
   }
 
@@ -293,13 +266,22 @@ export function WatchlistPage() {
     localStorage.setItem("ct-presets", JSON.stringify(next));
   }
 
-  function savePresetPrompt() {
-    const name = window.prompt("Name für die neue Voreinstellung:");
+  async function savePresetPrompt() {
+    const name = await prompt({
+      title: "Voreinstellung speichern",
+      message: "Wie soll die Voreinstellung heißen?",
+      placeholder: "z. B. Dividendenfokus",
+      confirmLabel: "Speichern",
+      validate: (value) => (value.trim() ? null : "Bitte einen Namen eingeben."),
+    });
     if (!name) return;
     const trimmed = name.trim();
     if (!trimmed) return;
     if (savedPresets[trimmed]) {
-      const overwrite = window.confirm(`Voreinstellung "${trimmed}" überschreiben?`);
+      const overwrite = await confirm({
+        title: "Voreinstellung überschreiben",
+        message: `Voreinstellung "${trimmed}" überschreiben?`,
+      });
       if (!overwrite) return;
     }
     persistPresets({
@@ -314,8 +296,12 @@ export function WatchlistPage() {
     filters.applyValues({ ...emptyFilters, ...p });
   }
 
-  function deletePreset(name: string) {
-    const confirmed = window.confirm(`Voreinstellung "${name}" wirklich löschen?`);
+  async function deletePreset(name: string) {
+    const confirmed = await confirm({
+      title: "Voreinstellung löschen",
+      message: `Voreinstellung "${name}" wirklich löschen?`,
+      destructive: true,
+    });
     if (!confirmed) return;
     const next = { ...savedPresets };
     delete next[name];
@@ -357,9 +343,7 @@ export function WatchlistPage() {
     newStock.isin.trim().length === 12 &&
     /^[A-Z0-9]{12}$/.test(newStock.isin.trim().toUpperCase()) &&
     newStock.name.trim().length > 0;
-  const isEditValid = editStock.name.trim().length > 0;
   const createLoading = false; // handled by axios; per-form loading state could be added later
-  const editLoading = false;
 
   return (
     <div className="page">
@@ -501,7 +485,7 @@ export function WatchlistPage() {
                     aria-label={`Voreinstellung ${name} löschen`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      deletePreset(name);
+                      void deletePreset(name);
                     }}
                   >
                     <XIcon />
@@ -512,7 +496,7 @@ export function WatchlistPage() {
               <DropdownItem
                 onSelect={() => {
                   close();
-                  savePresetPrompt();
+                  void savePresetPrompt();
                 }}
                 disabled={activeFilters.length === 0}
               >
@@ -608,8 +592,7 @@ export function WatchlistPage() {
           </>
         }
       >
-        <StockForm
-          mode="create"
+        <CreateStockForm
           formId="create-stock-form"
           values={newStock}
           onChange={setNewStock}
@@ -624,50 +607,45 @@ export function WatchlistPage() {
         )}
       </Modal>
 
-      <Modal
-        open={showEditForm && !!editingIsin}
-        onClose={closeEditModal}
-        title="Unternehmen bearbeiten"
-        subtitle={
-          editingIsin ? (
-            <span className="isin-pill" title="ISIN">
-              {editingIsin}
-            </span>
-          ) : null
-        }
-        footer={
-          <>
-            <button type="button" className="btn-secondary" onClick={closeEditModal} disabled={editLoading}>
-              Abbrechen
-            </button>
-            <button
-              type="submit"
-              form="edit-stock-form"
-              className="btn-primary"
-              disabled={editLoading || !isEditValid}
-            >
-              {editLoading ? "Speichere…" : "Änderungen speichern"}
-            </button>
-          </>
-        }
-      >
-        <StockForm
-          mode="edit"
-          formId="edit-stock-form"
-          values={editStock}
-          onChange={setEditStock}
-          onSubmit={saveEdit}
-          errors={editFieldErrors}
-          tagSuggestions={tagSuggestions}
-        />
-        {editError && (
-          <p className="form-banner-error" role="alert">
-            {editError}
-          </p>
-        )}
-      </Modal>
       {!initialLoaded || (listLoading && stocks.length === 0) ? (
         <Spinner label="Lade Watchlist..." />
+      ) : filtered.length === 0 ? (
+        activeFilters.length > 0 ? (
+          <EmptyState
+            icon={<SearchIcon size={20} />}
+            title="Keine Treffer für die aktuellen Filter"
+            description="Prüfe Suche, Sektor, Tags oder den Burggraben-Schalter – oder setze alle Filter zurück."
+            action={
+              <button type="button" className="btn-secondary" onClick={filters.reset}>
+                Filter zurücksetzen
+              </button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={<PlusIcon size={20} />}
+            title="Noch keine Unternehmen in der Watchlist"
+            description="Lege das erste Unternehmen an, importiere eine CSV-Datei oder synchronisiere deine bestehende Liste, um Marktdaten zu sehen."
+            action={
+              <>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => setShowCreateForm(true)}
+                >
+                  Erstes Unternehmen anlegen
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => csvInputRef.current?.click()}
+                >
+                  CSV importieren
+                </button>
+              </>
+            }
+          />
+        )
       ) : (
         <div className={listLoading ? "table-wrapper is-loading" : "table-wrapper"}>
           {listLoading && (
@@ -685,7 +663,7 @@ export function WatchlistPage() {
             thresholds={thresholds}
             onSort={onSort}
             onRefresh={refresh}
-            onEdit={startEdit}
+            onEdit={(stock) => navigate(`/stocks/${stock.isin}/edit`)}
             onDelete={deleteStock}
             refreshDisabled={isRunActive}
           />

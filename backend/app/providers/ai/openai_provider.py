@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from app.providers.ai._retry import post_with_retry
 from app.providers.ai.base import AIProvider, CompletionResult
 from app.providers.ai.pricing import estimate_cost
 
@@ -35,8 +36,7 @@ class OpenAIProvider(AIProvider):
             "messages": [{"role": "user", "content": "ping"}],
         }
         async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.post(self.endpoint, headers=self._headers(), json=body)
-            response.raise_for_status()
+            await post_with_retry(client, self.endpoint, headers=self._headers(), json=body)
 
     async def complete(
         self,
@@ -59,8 +59,9 @@ class OpenAIProvider(AIProvider):
             body["response_format"] = {"type": "json_object"}
 
         async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(self.endpoint, headers=self._headers(), json=body)
-            response.raise_for_status()
+            response = await post_with_retry(
+                client, self.endpoint, headers=self._headers(), json=body
+            )
             data = response.json()
 
         raw_text = data["choices"][0]["message"]["content"]
