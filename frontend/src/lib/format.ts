@@ -16,10 +16,16 @@ export function formatNumber(value: number | null | undefined, fractionDigits = 
   });
 }
 
-export function formatPercent(value: number | null | undefined, fractionDigits = 2): string {
+export function formatPercent(
+  value: number | null | undefined,
+  fractionDigits = 2,
+  options: { showSign?: boolean } = {}
+): string {
   if (isMissing(value)) return DASH;
+  const { showSign = true } = options;
   const v = value as number;
-  return `${v > 0 ? "+" : ""}${v.toFixed(fractionDigits)} %`;
+  const sign = showSign && v > 0 ? "+" : "";
+  return `${sign}${v.toFixed(fractionDigits)} %`;
 }
 
 export function formatCurrency(

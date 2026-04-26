@@ -652,10 +652,10 @@ export function StockDetailPage() {
             />
             <KpiTile
               label="Dividende"
-              value={formatPercent(stock.dividend_yield_current)}
+              value={formatPercent(stock.dividend_yield_current, 2, { showSign: false })}
               sub={
                 stock.dividend_yield_avg_5y != null
-                  ? `Ø 5J: ${formatPercent(stock.dividend_yield_avg_5y)}`
+                  ? `Ø 5J: ${formatPercent(stock.dividend_yield_avg_5y, 2, { showSign: false })}`
                   : undefined
               }
               className={dividendClass(stock.dividend_yield_current, defaultThresholds) ? "kpi-highlight" : ""}

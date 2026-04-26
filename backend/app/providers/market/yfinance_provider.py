@@ -102,7 +102,11 @@ class YFinanceProvider(MarketProvider):
             pe_min_5y=pe_min,
             pe_max_5y=pe_max,
             pe_avg_5y=pe_avg,
-            dividend_yield_current=(info.get("dividendYield") or 0) * 100 if info.get("dividendYield") else None,
+            # yfinance liefert `dividendYield` seit ~v0.2.40 bereits als Prozent
+            # (0.91 = 0,91 %), nicht mehr als Bruch. Direkt übernehmen, sonst
+            # erscheinen Renditen 100x zu hoch in der UI. `fiveYearAvgDividendYield`
+            # war schon immer Prozent.
+            dividend_yield_current=info.get("dividendYield"),
             dividend_yield_avg_5y=info.get("fiveYearAvgDividendYield"),
             analyst_target_1y=info.get("targetMedianPrice"),
             market_cap=info.get("marketCap"),
