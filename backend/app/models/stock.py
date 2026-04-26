@@ -38,9 +38,31 @@ class Stock(Base):
     link_onvista_chart: Mapped[str | None] = mapped_column(String(512), nullable=True)
     link_onvista_fundamental: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
-    market_data = relationship("MarketData", uselist=False, back_populates="stock", cascade="all,delete-orphan")
-    metrics = relationship("Metrics", uselist=False, back_populates="stock", cascade="all,delete-orphan")
-    position = relationship("Position", uselist=False, back_populates="stock", cascade="all,delete-orphan")
+    # 1:1 children are eager-loaded so a single Stock fetch returns market /
+    # metrics / position data in one round trip. This avoids the N+1 burst we
+    # previously hit when the dashboard serialized many rows via to_stock_out.
+    market_data = relationship(
+        "MarketData",
+        uselist=False,
+        back_populates="stock",
+        cascade="all,delete-orphan",
+        lazy="joined",
+    )
+    metrics = relationship(
+        "Metrics",
+        uselist=False,
+        back_populates="stock",
+        cascade="all,delete-orphan",
+        lazy="joined",
+    )
+    position = relationship(
+        "Position",
+        uselist=False,
+        back_populates="stock",
+        cascade="all,delete-orphan",
+        lazy="joined",
+    )
+    # Many:many tag list stays selectin so the JOIN tree stays simple.
     tags = relationship("Tag", secondary=stock_tags, lazy="selectin")
 
 

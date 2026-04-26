@@ -3,18 +3,26 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import inspect, text
 
 from app.api.v1 import ai, auth, dashboard, export_csv, import_csv, jobs, run_logs, settings, stocks, tags
 from app.core.config import settings as app_settings
 from app.core.logging import configure_logging
+from app.core.middleware import RequestIDMiddleware
+from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.core.security import hash_password
 from app.db.session import SessionLocal, engine
 from app.models.settings import AppSettings
 from app.models.stock import Stock
 from app.models.user import User
 from app.services.refresh_worker import worker as refresh_worker
-from app.services.scheduler_service import recover_stale_locks, start_scheduler
+from app.services.scheduler_service import (
+    recover_stale_locks,
+    shutdown_scheduler,
+    start_scheduler,
+)
 from app.services.seed_service import load_seed_json
 
 logger = logging.getLogger(__name__)
@@ -106,10 +114,19 @@ async def lifespan(_: FastAPI):
     try:
         yield
     finally:
+        # Stop the cron thread first so it cannot enqueue new work after the
+        # worker has been told to drain.
+        shutdown_scheduler()
         refresh_worker.stop()
 
 
 app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+# Outermost so the request id is set before any other middleware runs and
+# every emitted log line — including slowapi rejections — gets tagged.
+app.add_middleware(RequestIDMiddleware)
 
 
 @app.get("/api/v1/health")

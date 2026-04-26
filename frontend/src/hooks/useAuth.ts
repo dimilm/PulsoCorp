@@ -9,6 +9,10 @@ export type AuthUser = { username: string; role: string } | null;
  * The hook also listens for the global `AUTH_LOST_EVENT` (emitted by the
  * axios 401 interceptor) so any subsequent failure logs the user out across
  * the whole app instead of silently leaving stale state in components.
+ *
+ * Note: `/auth/me` does NOT return a CSRF token. Token rotation happens
+ * exclusively on `/login` and `/refresh`; in-flight calls read the value
+ * straight from the (non-HttpOnly) CSRF cookie via the axios interceptor.
  */
 export function useAuth() {
   const [user, setUser] = useState<AuthUser>(null);
@@ -20,7 +24,6 @@ export function useAuth() {
       .get("/auth/me")
       .then((res) => {
         if (cancelled) return;
-        if (res.data.csrf_token) setCsrfToken(res.data.csrf_token);
         setUser({ username: res.data.username, role: res.data.role });
       })
       .catch(() => {

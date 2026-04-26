@@ -3,7 +3,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.services.stock_service import _upsert_seed_row
+from app.services.stock_service import upsert_seed_row
 
 
 def load_seed_json(db: Session, seed_path: str) -> int:
@@ -18,7 +18,7 @@ def load_seed_json(db: Session, seed_path: str) -> int:
             continue
         if "isin" not in row or "name" not in row:
             continue
-        _upsert_seed_row(db, row)
+        upsert_seed_row(db, row)
         imported += 1
     db.commit()
     return imported

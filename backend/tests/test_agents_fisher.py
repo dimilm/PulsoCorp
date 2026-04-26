@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.agents.fisher.agent import FisherAgent
 from app.agents.fisher.schema import FISHER_QUESTION_IDS, FisherResult
-from app.api.v1 import ai as ai_module
+from app.api.deps import get_ai_provider
 from app.db.session import SessionLocal
 from app.main import app
 from app.models.ai_run import AIRun
@@ -133,17 +133,18 @@ def test_fisher_run_records_error_on_invalid_payload() -> None:
     assert run.error_text
 
 
-def test_fisher_endpoint_runs_agent_and_returns_run_row(monkeypatch) -> None:
+def test_fisher_endpoint_runs_agent_and_returns_run_row() -> None:
     stock = _seed_stock()
-    monkeypatch.setattr(
-        ai_module, "build_ai_provider", lambda _row: _StubProvider(_sample_fisher_payload())
-    )
-    client = TestClient(app)
-    csrf = _login(client)
-    resp = client.post(
-        f"/api/v1/ai/agents/fisher/run/{stock.isin}",
-        headers={"X-CSRF-Token": csrf},
-    )
+    app.dependency_overrides[get_ai_provider] = lambda: _StubProvider(_sample_fisher_payload())
+    try:
+        client = TestClient(app)
+        csrf = _login(client)
+        resp = client.post(
+            f"/api/v1/ai/agents/fisher/run/{stock.isin}",
+            headers={"X-CSRF-Token": csrf},
+        )
+    finally:
+        app.dependency_overrides.pop(get_ai_provider, None)
     assert resp.status_code == 200
     body = resp.json()
     assert body["agent_id"] == "fisher"

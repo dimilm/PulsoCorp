@@ -21,6 +21,9 @@ _TEST_DB = _TEST_DIR / "test.db"
 os.environ.setdefault("COOKIE_SECURE", "false")
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"
 os.environ.setdefault("JWT_SECRET", "test-secret-do-not-use")
+# Disable the per-IP rate limiter globally for tests; the dedicated
+# rate-limit test toggles `limiter.enabled` back on locally.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # Use a deterministic Fernet key so encrypted values stay decryptable across
 # tests within the same session.
 os.environ.setdefault(

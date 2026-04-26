@@ -226,8 +226,10 @@ def test_execute_single_refresh_marks_steps_done_and_persists_data(monkeypatch) 
     """Happy path: every step ends up `done`, market data is persisted."""
     _seed_stock(isin="TEST00000010", name="Happy Path")
     monkeypatch.setattr(ss.refresh_worker, "submit", lambda factory: None)
+    # The executor lives in the focused `refresh_runner` module after the
+    # split; patch the provider binding there so the runner picks it up.
     monkeypatch.setattr(
-        ss,
+        ss.refresh_runner,
         "YFinanceProvider",
         lambda: _FakeProvider(
             quote=QuoteData(current_price=99.5, day_change_pct=0.7, currency="USD"),
@@ -282,12 +284,12 @@ def test_execute_single_refresh_records_quote_failure(monkeypatch) -> None:
     _seed_stock(isin="TEST00000020", name="Quote Failure")
     monkeypatch.setattr(ss.refresh_worker, "submit", lambda factory: None)
     monkeypatch.setattr(
-        ss,
+        ss.refresh_runner,
         "YFinanceProvider",
         lambda: _FakeProvider(quote_error=RuntimeError("yahoo down")),
     )
     # Skip the back-off so the test stays fast.
-    monkeypatch.setattr(ss, "_RETRY_DELAYS", (0,))
+    monkeypatch.setattr(ss.refresh_runner, "_RETRY_DELAYS", (0,))
 
     start = ss.start_single_refresh_background("TEST00000020")
     run_id = start["run_id"]
@@ -334,7 +336,7 @@ def test_bulk_refresh_still_uses_market_steps_helper(monkeypatch) -> None:
     _seed_stock(isin="TEST00000030", name="Bulk Regression")
     monkeypatch.setattr(ss.refresh_worker, "submit", lambda factory: None)
     monkeypatch.setattr(
-        ss,
+        ss.refresh_runner,
         "YFinanceProvider",
         lambda: _FakeProvider(),
     )

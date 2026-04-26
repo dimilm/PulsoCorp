@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import csrf_guard, get_current_user, require_admin
+from app.api.deps import csrf_guard, get_current_user, get_market_provider, require_admin
 from app.db.session import get_db
 from app.models.stock import Stock
-from app.providers.market.yfinance_provider import YFinanceProvider
+from app.providers.market.base import MarketProvider
 from app.schemas.stock import HistoryResponse, StockCreate, StockOut, StockUpdate
 from app.services.history_service import HistoryService
 from app.services.scheduler_service import start_single_refresh_background
@@ -93,11 +93,12 @@ async def get_stock_history(
     range: str = Query(default="1y", pattern="^(1m|6m|1y|5y|max)$"),
     _: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
+    market_provider: MarketProvider = Depends(get_market_provider),
 ) -> dict:
     stock = db.get(Stock, isin.upper())
     if not stock:
         raise HTTPException(status_code=404, detail="Stock not found")
-    service = HistoryService(YFinanceProvider())
+    service = HistoryService(market_provider)
     result = await service.get_history(db, stock, range)
     return {"isin": stock.isin, **result}
 

@@ -1,6 +1,36 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Names of every link_* field on stock-shaped schemas. Centralised here so
+# StockBase and StockUpdate stay in sync — both schemas wire the validator
+# to this exact list.
+_URL_FIELDS = (
+    "link_yahoo",
+    "link_finanzen",
+    "link_onvista_chart",
+    "link_onvista_fundamental",
+)
+
+
+def _normalize_url(value: str | None) -> str | None:
+    """Validate the optional URL fields on the stock schemas.
+
+    The legacy CSV import produces empty strings for missing links and the
+    UI sends back blank inputs the same way, so we coerce those to `None`
+    instead of forcing the user to clear the field manually. When a value
+    is present we require an `http://` or `https://` prefix so a malformed
+    paste cannot end up persisted (and later rendered as a "click" target
+    that opens a relative path inside our own app).
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if not (stripped.startswith("http://") or stripped.startswith("https://")):
+        raise ValueError("Link must start with http:// or https://")
+    return stripped
 
 
 class StockBase(BaseModel):
@@ -17,6 +47,11 @@ class StockBase(BaseModel):
     link_onvista_fundamental: str | None = None
     tranches: int = 0
     tags: list[str] = Field(default_factory=list)
+
+    @field_validator(*_URL_FIELDS, mode="before")
+    @classmethod
+    def _validate_links(cls, value: str | None) -> str | None:
+        return _normalize_url(value)
 
 
 class StockCreate(StockBase):
@@ -36,6 +71,11 @@ class StockUpdate(BaseModel):
     link_onvista_fundamental: str | None = None
     tranches: int | None = None
     tags: list[str] | None = None
+
+    @field_validator(*_URL_FIELDS, mode="before")
+    @classmethod
+    def _validate_links(cls, value: str | None) -> str | None:
+        return _normalize_url(value)
 
 
 class StockOut(StockBase):

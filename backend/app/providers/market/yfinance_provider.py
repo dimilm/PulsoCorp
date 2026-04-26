@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from urllib.parse import parse_qs, urlparse
 
 import yfinance as yf
 
 from app.providers.market.base import MarketProvider, MetricsData, OHLCPoint, QuoteData
+
+logger = logging.getLogger(__name__)
 
 
 class YFinanceProvider(MarketProvider):
@@ -27,7 +30,8 @@ class YFinanceProvider(MarketProvider):
                 symbol = quotes[0].get("symbol")
                 if symbol:
                     return str(symbol).upper()
-        except Exception:
+        except Exception as exc:
+            logger.warning("yfinance ISIN lookup failed for %s: %s", isin, exc)
             return None
         return None
 
@@ -52,7 +56,14 @@ class YFinanceProvider(MarketProvider):
             hist = await asyncio.to_thread(
                 lambda: ticker.history(period=period, interval=interval, auto_adjust=False)
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "yfinance history fetch failed for %s (%s/%s): %s",
+                symbol,
+                period,
+                interval,
+                exc,
+            )
             return []
         if hist is None or getattr(hist, "empty", True):
             return []
@@ -113,7 +124,12 @@ class YFinanceProvider(MarketProvider):
             hist = await asyncio.to_thread(
                 lambda: ticker.history(period="5y", interval="1mo", auto_adjust=False)
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "yfinance PE-band history fetch failed for %s: %s",
+                getattr(ticker, "ticker", "?"),
+                exc,
+            )
             return None, None, None
         if hist is None or "Close" not in hist or hist["Close"].dropna().empty:
             return None, None, None
@@ -124,7 +140,13 @@ class YFinanceProvider(MarketProvider):
         for accessor, scale in (("quarterly_income_stmt", 4), ("income_stmt", 1)):
             try:
                 stmt = await asyncio.to_thread(lambda a=accessor: getattr(ticker, a))
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "yfinance income-statement accessor %s failed for %s: %s",
+                    accessor,
+                    getattr(ticker, "ticker", "?"),
+                    exc,
+                )
                 stmt = None
             if stmt is None or getattr(stmt, "empty", True):
                 continue

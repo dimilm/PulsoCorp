@@ -136,9 +136,12 @@ def _calc_target_distance_pct(price: float | None, target: float | None) -> floa
 
 
 def to_stock_out(db: Session, stock: Stock) -> dict:
-    market = db.get(MarketData, stock.isin)
-    position = db.get(Position, stock.isin) or Position(isin=stock.isin, tranches=0)
-    metrics = db.get(Metrics, stock.isin)
+    # Relies on the eager-loaded 1:1 relationships on Stock (lazy="joined").
+    # `db` stays in the signature so callers don't change, but we no longer
+    # issue per-row SELECTs from here.
+    market = stock.market_data
+    position = stock.position or Position(isin=stock.isin, tranches=0)
+    metrics = stock.metrics
     analyst_target = metrics.analyst_target_1y if metrics else None
     target_distance = _calc_target_distance_pct(
         market.current_price if market else None, analyst_target
@@ -189,8 +192,7 @@ def find_similar_stocks(db: Session, stock: Stock, limit: int = 5) -> list[dict]
     if not stock.sector:
         return []
 
-    own_metrics = db.get(Metrics, stock.isin)
-    own_cap = own_metrics.market_cap if own_metrics else None
+    own_cap = stock.metrics.market_cap if stock.metrics else None
 
     candidates = (
         db.query(Stock)
@@ -201,8 +203,7 @@ def find_similar_stocks(db: Session, stock: Stock, limit: int = 5) -> list[dict]
         return []
 
     def sort_key(other: Stock):
-        m = db.get(Metrics, other.isin)
-        cap = m.market_cap if m else None
+        cap = other.metrics.market_cap if other.metrics else None
         if own_cap is not None and cap is not None:
             return (0, abs(cap - own_cap))
         if cap is not None:
@@ -275,7 +276,7 @@ def parse_csv_and_upsert(db: Session, content: bytes) -> dict:
     seed_rows = extract_seed_rows_from_csv(content)
     imported = 0
     for row in seed_rows:
-        _upsert_seed_row(db, row)
+        upsert_seed_row(db, row)
         imported += 1
     db.commit()
     return {"imported": imported, "skipped": 0, "errors": []}
@@ -355,7 +356,15 @@ def build_seed_rows(db: Session) -> list[dict]:
     return rows
 
 
-def _upsert_seed_row(db: Session, row: dict) -> None:
+def upsert_seed_row(db: Session, row: dict) -> None:
+    """Insert or update a single seed-shaped row.
+
+    Used by both the JSON loader on first boot (`seed_service`) and the CSV
+    importer (`parse_csv_and_upsert`). The shape matches
+    `backend/app/seed/stocks.seed.json` so callers can pipe one straight
+    through the other without translation. The function flushes the inserts
+    but does *not* commit — the caller decides batching.
+    """
     db.merge(
         Stock(
             isin=row["isin"],

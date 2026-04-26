@@ -16,8 +16,11 @@ def refresh_all(_: dict = Depends(get_current_user)) -> dict:
     The actual work runs on `RefreshWorker` (see `services/refresh_worker.py`)
     so the FastAPI event loop stays free. Progress can be polled via
     `GET /run-logs/current` and `GET /run-logs/{id}/stocks`.
+
+    `manual=True` bypasses the weekend skip — the user explicitly clicked the
+    button, so we honour the request even on Saturday/Sunday.
     """
-    return start_refresh_all_background()
+    return start_refresh_all_background(manual=True)
 
 
 @router.post("/refresh-all/cancel", dependencies=[Depends(csrf_guard)])

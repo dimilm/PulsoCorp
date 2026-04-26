@@ -16,6 +16,7 @@ never blocks on a full-stock refresh and vice versa.
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 
 from sqlalchemy import func
@@ -24,6 +25,8 @@ from sqlalchemy.orm import Session
 from app.core.time import utcnow
 from app.models.stock import PriceHistory, Stock
 from app.providers.market.base import MarketProvider
+
+logger = logging.getLogger(__name__)
 
 
 # Per-interval cache config: (yf_period, ttl_hours).
@@ -113,7 +116,12 @@ class HistoryService:
                     name=stock.name,
                     yahoo_link=stock.link_yahoo,
                 )
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "Symbol resolution failed for %s while fetching history: %s",
+                    stock.isin,
+                    exc,
+                )
                 resolved = None
             symbol = resolved or stock.name
             if resolved:
@@ -126,7 +134,14 @@ class HistoryService:
             points = await self.provider.fetch_history(
                 symbol, period=period, interval=interval
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "History fetch failed for %s (%s/%s): %s",
+                symbol,
+                period,
+                interval,
+                exc,
+            )
             points = []
 
         if not points:

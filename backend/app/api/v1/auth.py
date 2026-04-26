@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, new_csrf_token
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.core.security import create_access_token, verify_password
 from app.db.session import get_db
 from app.models.user import User
@@ -45,7 +46,14 @@ def _clear_session_cookies(response: Response) -> None:
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> LoginResponse:
+@limiter.limit("5/minute")
+def login(
+    request: Request,
+    payload: LoginRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> LoginResponse:
+    # `request` is required by slowapi to derive the rate-limit key.
     user = db.get(User, payload.username)
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")

@@ -497,3 +497,54 @@ cd docker
 docker compose down -v   # -v also drops the app_data volume (irreversible!)
 docker compose up --build
 ```
+
+## Deployment & scaling assumptions
+
+CompanyTracker is intentionally a **single-process** application. Several
+design choices only hold under that assumption — please re-evaluate them
+before scaling horizontally.
+
+### Single-process design
+
+* The refresh pipeline runs on a dedicated thread (`RefreshWorker`) inside
+  the same Python process as the FastAPI app. The cron job
+  (`cron_scheduler`) and the manual entrypoints share that worker.
+* Job concurrency is enforced by an atomic DB row (`JobLock` in
+  `lock_manager.py`). It is correct across processes, but the in-memory
+  cancellation registry (`refresh_lock._cancelled_run_ids`) is **not**:
+  flagging a run for cancel only takes effect on the worker that owns
+  the run. With multiple backend instances a cancel could miss its target.
+* The slowapi rate-limiter (`/auth/login`, `5/minute`) defaults to an
+  in-memory store, so each backend instance enforces the limit
+  independently. Behind a load balancer that round-robins requests this
+  effectively raises the limit by `N`.
+* The cron scheduler (`apscheduler.BackgroundScheduler`) is started in
+  every process. With more than one instance you'd run the daily refresh
+  multiple times — the lock prevents data corruption, but you'd waste
+  market-data API budget.
+
+### Storage
+
+* SQLite is the only supported backend today (`database_url` in
+  `app/core/config.py`). Migrations and SQL idioms are kept ANSI where
+  possible — the only deliberate sqlite-specific call is the
+  `INSERT … ON CONFLICT DO NOTHING` for the lock row in `lock_manager.py`.
+* SQLite tolerates exactly one writer at a time. The single-process
+  assumption above is what keeps the write contention manageable.
+
+### When you need to scale out
+
+Migrating to multiple instances or a managed Postgres is feasible but
+will require, at minimum:
+
+* Replacing the in-memory cancel registry with a DB-backed flag (or a
+  dedicated message bus).
+* Switching the rate-limit storage to Redis (`slowapi` supports it
+  out of the box) so the per-IP limit is global.
+* Running the cron job in exactly one place (e.g. a `--scheduler-only`
+  process or an external cron) instead of every replica.
+* Auditing the `lock_manager.py` `INSERT … ON CONFLICT` for the target
+  database (Postgres has equivalent syntax, MySQL needs a translation).
+
+ADR `docs/adr/0001-single-process-backend.md` captures this trade-off in
+more detail.

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from app.db.session import SessionLocal
 from app.main import app
 from app.models.stock import Stock
-from app.services.stock_service import _upsert_seed_row, build_seed_rows
+from app.services.stock_service import build_seed_rows, upsert_seed_row
 
 
 def _login(client: TestClient, username: str = "admin", password: str = "changeme") -> str:
@@ -88,7 +88,7 @@ def test_export_seed_rows_are_sorted_by_name() -> None:
 def test_upsert_seed_row_imports_tags_from_seed_dict() -> None:
     db = SessionLocal()
     try:
-        _upsert_seed_row(
+        upsert_seed_row(
             db,
             {
                 "isin": "US0000000011",
@@ -116,7 +116,7 @@ def test_upsert_seed_row_imports_tags_from_seed_dict() -> None:
 def test_upsert_seed_row_without_tags_key_still_works() -> None:
     db = SessionLocal()
     try:
-        _upsert_seed_row(
+        upsert_seed_row(
             db,
             {
                 "isin": "US0000000012",

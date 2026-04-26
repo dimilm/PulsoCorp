@@ -1,6 +1,7 @@
 """Tests for the JobLock TTL/heartbeat semantics in scheduler_service."""
 from __future__ import annotations
 
+import threading
 from datetime import timedelta
 
 import pytest
@@ -8,7 +9,7 @@ import pytest
 from app.core.time import utcnow
 from app.db.session import SessionLocal
 from app.models.run_log import JobLock, RunLog
-from app.services import scheduler_service as ss
+from app.services import lock_manager, scheduler_service as ss
 
 
 @pytest.fixture(autouse=True)
@@ -132,5 +133,71 @@ def test_recover_stale_locks_keeps_fresh_lock() -> None:
         lock = db.get(JobLock, ss._LOCK_NAME)
         assert lock.locked is True
         assert lock.owner == "alive"
+    finally:
+        db.close()
+
+
+def test_try_acquire_lock_serializes_concurrent_callers() -> None:
+    """Two threads racing on the same lock: exactly one should acquire it."""
+    barrier = threading.Barrier(2)
+    results: list[bool] = []
+    results_lock = threading.Lock()
+
+    def attempt(owner_id: str) -> None:
+        db = SessionLocal()
+        try:
+            barrier.wait(timeout=2)
+            ok = lock_manager.try_acquire_lock(db, ss._LOCK_NAME, owner_id)
+            with results_lock:
+                results.append(ok)
+        finally:
+            db.close()
+
+    threads = [
+        threading.Thread(target=attempt, args=(f"owner-{i}",)) for i in range(2)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5)
+
+    assert results.count(True) == 1
+    assert results.count(False) == 1
+
+
+def test_try_acquire_lock_steals_stale_lock() -> None:
+    """A heartbeat older than the TTL is treated as a crashed owner."""
+    too_old = utcnow() - ss._LOCK_HEARTBEAT_TTL - timedelta(minutes=1)
+    _set_lock(
+        locked=True,
+        owner="dead-owner",
+        acquired_at=too_old,
+        heartbeat_at=too_old,
+    )
+
+    db = SessionLocal()
+    try:
+        assert lock_manager.try_acquire_lock(db, ss._LOCK_NAME, "fresh") is True
+        lock = db.get(JobLock, ss._LOCK_NAME)
+        db.expire(lock)
+        lock = db.get(JobLock, ss._LOCK_NAME)
+        assert lock.owner == "fresh"
+    finally:
+        db.close()
+
+
+def test_release_lock_only_for_owner() -> None:
+    db = SessionLocal()
+    try:
+        assert lock_manager.try_acquire_lock(db, ss._LOCK_NAME, "owner-a") is True
+        # Foreign owner must not be able to release.
+        assert lock_manager.release_lock(db, ss._LOCK_NAME, "intruder") is False
+        # The rightful owner releases successfully.
+        assert lock_manager.release_lock(db, ss._LOCK_NAME, "owner-a") is True
+        lock = db.get(JobLock, ss._LOCK_NAME)
+        db.expire(lock)
+        lock = db.get(JobLock, ss._LOCK_NAME)
+        assert lock.locked is False
+        assert lock.owner is None
     finally:
         db.close()

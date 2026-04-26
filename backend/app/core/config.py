@@ -13,11 +13,10 @@ class Settings(BaseSettings):
     cookie_secure: bool = True
     cookie_samesite: str = "lax"
     encryption_key: str = "change-me-32-byte-key-change-me-32b"
-    daily_update_hour: int = 22
-    daily_update_minute: int = 30
-    skip_weekends: bool = False
-    ai_refresh_interval_days: int = 30
     seed_json_path: str = "app/seed/stocks.seed.json"
+
+    # NOTE: cron schedule + weekend toggle live in `AppSettings` (DB row), not
+    # here, because the user changes them via the Settings page at runtime.
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

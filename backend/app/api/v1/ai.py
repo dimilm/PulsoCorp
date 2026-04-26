@@ -20,14 +20,17 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.agents import get_agent, list_agents
-from app.api.deps import csrf_guard, get_current_user, require_admin
+from app.api.deps import csrf_guard, get_ai_provider, get_current_user, require_admin
 from app.db.session import get_db
 from app.models.ai_run import AIRun
 from app.models.settings import AppSettings
 from app.models.stock import Stock
+from app.providers.ai.base import AIProvider
 from app.schemas.ai import AgentInfoOut, AgentRunRequest, AIRunOut
-from app.services.provider_factory import build_ai_provider
+from app.services.provider_factory import build_ai_provider  # re-exported for monkeypatch back-compat
 from app.services.run_status_service import humanize_error
+
+__all__ = ["router", "build_ai_provider"]
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -64,6 +67,7 @@ async def run_agent(
     payload: AgentRunRequest | None = None,
     _: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
+    provider: AIProvider = Depends(get_ai_provider),
 ) -> AIRun:
     agent = get_agent(agent_id)
     if agent is None:
@@ -72,8 +76,6 @@ async def run_agent(
     if stock is None:
         raise HTTPException(status_code=404, detail="Stock not found")
 
-    settings_row = db.get(AppSettings, 1) or AppSettings(id=1)
-    provider = build_ai_provider(settings_row)
     kwargs: dict = {}
     if payload is not None and payload.peers is not None:
         kwargs["peers"] = payload.peers
@@ -116,11 +118,12 @@ def get_run(
 
 @router.post("/test", dependencies=[Depends(csrf_guard)])
 async def test_ai_connection(
-    _: dict = Depends(require_admin), db: Session = Depends(get_db)
+    _: dict = Depends(require_admin),
+    db: Session = Depends(get_db),
+    provider: AIProvider = Depends(get_ai_provider),
 ) -> dict:
     """Probe the configured AI provider with a minimal `ping()` request."""
     row = db.get(AppSettings, 1) or AppSettings(id=1)
-    provider = build_ai_provider(row)
     started = time.perf_counter()
     try:
         await provider.ping()

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AgentInfoOut(BaseModel):
@@ -28,8 +28,7 @@ class AIRunOut(BaseModel):
     cost_estimate: float | None = None
     duration_ms: int | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AgentRunRequest(BaseModel):

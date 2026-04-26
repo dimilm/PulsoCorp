@@ -1,14 +1,14 @@
 """Tests for `POST /api/v1/ai/test`.
 
 The endpoint must never raise — failures are mapped to `{ok: false, error}`
-so the Settings page can render them inline. We patch `build_ai_provider` so
-no real network call ever happens in CI.
+so the Settings page can render them inline. We override the AI-provider
+dependency so no real network call ever happens in CI.
 """
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.api.v1 import ai as ai_module
+from app.api.deps import get_ai_provider
 from app.core.config import settings
 from app.main import app
 from app.providers.ai.base import AIProvider
@@ -30,12 +30,14 @@ class _FailProvider(AIProvider):
         raise RuntimeError("connection refused")
 
 
-def test_ai_test_returns_ok_when_provider_pings(monkeypatch) -> None:
+def test_ai_test_returns_ok_when_provider_pings() -> None:
     client = TestClient(app)
     csrf = _login(client)
-    monkeypatch.setattr(ai_module, "build_ai_provider", lambda _row: _OkProvider())
-
-    resp = client.post("/api/v1/ai/test", headers={"X-CSRF-Token": csrf})
+    app.dependency_overrides[get_ai_provider] = lambda: _OkProvider()
+    try:
+        resp = client.post("/api/v1/ai/test", headers={"X-CSRF-Token": csrf})
+    finally:
+        app.dependency_overrides.pop(get_ai_provider, None)
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
@@ -44,12 +46,14 @@ def test_ai_test_returns_ok_when_provider_pings(monkeypatch) -> None:
     assert isinstance(body["model"], str) and body["model"]
 
 
-def test_ai_test_returns_humanised_error_on_failure(monkeypatch) -> None:
+def test_ai_test_returns_humanised_error_on_failure() -> None:
     client = TestClient(app)
     csrf = _login(client)
-    monkeypatch.setattr(ai_module, "build_ai_provider", lambda _row: _FailProvider())
-
-    resp = client.post("/api/v1/ai/test", headers={"X-CSRF-Token": csrf})
+    app.dependency_overrides[get_ai_provider] = lambda: _FailProvider()
+    try:
+        resp = client.post("/api/v1/ai/test", headers={"X-CSRF-Token": csrf})
+    finally:
+        app.dependency_overrides.pop(get_ai_provider, None)
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is False
