@@ -4,11 +4,14 @@ import csv
 import io
 import re
 
+from typing import Any
+
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.stock import MarketData, Metrics, Position, Stock, Tag, stock_tags
 from app.schemas.stock import StockCreate, StockUpdate
+from app.services.ai_run_lookup import build_latest_run_summaries
 
 ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{10}$")
 
@@ -95,7 +98,16 @@ def list_stocks(
         else:
             q = q.distinct()
 
-    return [to_stock_out(db, stock) for stock in q.order_by(Stock.name.asc()).all()]
+    stocks = q.order_by(Stock.name.asc()).all()
+    # Single batched lookup for the entire result set so the watchlist pills
+    # never trigger N+1 selects against `ai_runs`. We always hand a concrete
+    # dict to `to_stock_out` (empty for stocks without runs) so it never
+    # falls back to its single-stock lookup path.
+    ai_map = build_latest_run_summaries(db, [s.isin for s in stocks])
+    return [
+        to_stock_out(db, stock, latest_ai_runs=ai_map.get(stock.isin, {}))
+        for stock in stocks
+    ]
 
 
 def _missing_metrics(metrics: Metrics | None) -> list[str]:
@@ -135,10 +147,19 @@ def _calc_target_distance_pct(price: float | None, target: float | None) -> floa
     return round(((target - price) / price) * 100.0, 2)
 
 
-def to_stock_out(db: Session, stock: Stock) -> dict:
+def to_stock_out(
+    db: Session,
+    stock: Stock,
+    *,
+    latest_ai_runs: dict[str, dict[str, Any]] | None = None,
+) -> dict:
     # Relies on the eager-loaded 1:1 relationships on Stock (lazy="joined").
     # `db` stays in the signature so callers don't change, but we no longer
     # issue per-row SELECTs from here.
+    #
+    # `latest_ai_runs` is the pre-resolved map from `build_latest_run_summaries`.
+    # When omitted (single-stock paths like `GET /stocks/{isin}`) we resolve
+    # it on the fly so every endpoint exposes the same shape consistently.
     market = stock.market_data
     position = stock.position or Position(isin=stock.isin, tranches=0)
     metrics = stock.metrics
@@ -146,6 +167,10 @@ def to_stock_out(db: Session, stock: Stock) -> dict:
     target_distance = _calc_target_distance_pct(
         market.current_price if market else None, analyst_target
     )
+    if latest_ai_runs is None:
+        latest_ai_runs = build_latest_run_summaries(db, [stock.isin]).get(
+            stock.isin, {}
+        )
     return {
         "isin": stock.isin,
         "name": stock.name,
@@ -178,6 +203,7 @@ def to_stock_out(db: Session, stock: Stock) -> dict:
         "revenue_growth": metrics.revenue_growth if metrics else None,
         "missing_metrics": _missing_metrics(metrics),
         "tags": sorted([t.name for t in (stock.tags or [])]),
+        "latest_ai_runs": latest_ai_runs,
     }
 
 
@@ -211,7 +237,12 @@ def find_similar_stocks(db: Session, stock: Stock, limit: int = 5) -> list[dict]
         return (2, other.name.lower())
 
     candidates.sort(key=sort_key)
-    return [to_stock_out(db, c) for c in candidates[:limit]]
+    selected = candidates[:limit]
+    ai_map = build_latest_run_summaries(db, [c.isin for c in selected])
+    return [
+        to_stock_out(db, c, latest_ai_runs=ai_map.get(c.isin, {}))
+        for c in selected
+    ]
 
 
 def create_stock(db: Session, payload: StockCreate) -> Stock:

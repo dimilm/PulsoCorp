@@ -19,7 +19,6 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.agents.base import BaseAgent
-from app.core.time import utcnow
 from app.agents.tournament.schema import (
     TOURNAMENT_CATEGORIES,
     CompanyProfile,
@@ -92,20 +91,36 @@ class TournamentAgent(BaseAgent):
             },
         )
 
-    async def run(  # type: ignore[override]
+    async def execute_run(  # type: ignore[override]
         self,
         db: Session,
         provider: AIProvider,
+        run: AIRun,
         stock: Stock,
-        *,
-        peers: list[str] | None = None,
         **_: Any,
     ) -> AIRun:
-        payload = self.build_input(db, stock, peers=peers)
-        participants_raw = payload["participants"]
+        """Walk the bracket round by round, persisting the final result.
+
+        The input payload was already resolved during `queue_run`; we only
+        need to (a) fan out per-match LLM calls and (b) update the existing
+        running row with the aggregate result, total cost and duration.
+        """
+        payload = run.input_payload
+        participants_raw = payload.get("participants", [])
+        provider_name = getattr(provider, "name", provider.__class__.__name__.lower())
+        provider_model = getattr(provider, "model", "unknown")
+
         if len(participants_raw) < 2:
-            return self._persist_error(
-                db, stock, payload, provider, "Mindestens 2 Teilnehmer benötigt"
+            return self._finish_run(
+                db,
+                run,
+                provider_name,
+                provider_model,
+                status="error",
+                result_dict=None,
+                error_text="Mindestens 2 Teilnehmer benötigt",
+                total_cost=None,
+                duration_ms=0,
             )
 
         # Pad to the next power of two with `None` byes; a bye automatically
@@ -116,8 +131,6 @@ class TournamentAgent(BaseAgent):
         ]
         seeded += [None] * (size - len(seeded))
 
-        provider_name = getattr(provider, "name", provider.__class__.__name__.lower())
-        provider_model = getattr(provider, "model", "unknown")
         system_prompt = self.load_prompt().strip()
         schema = SingleMatch.model_json_schema()
 
@@ -177,23 +190,17 @@ class TournamentAgent(BaseAgent):
             result_dict = None
 
         duration_ms = int((time.perf_counter() - started) * 1000)
-        run = AIRun(
-            isin=stock.isin,
-            agent_id=self.id,
-            created_at=utcnow(),
-            provider=provider_name,
-            model=provider_model,
+        return self._finish_run(
+            db,
+            run,
+            provider_name,
+            provider_model,
             status=run_status,
-            input_payload=payload,
-            result_payload=result_dict,
+            result_dict=result_dict,
             error_text=error_text,
-            cost_estimate=total_cost if cost_seen else None,
+            total_cost=total_cost if cost_seen else None,
             duration_ms=duration_ms,
         )
-        db.add(run)
-        db.commit()
-        db.refresh(run)
-        return run
 
     async def _run_match(
         self,
@@ -226,27 +233,26 @@ class TournamentAgent(BaseAgent):
         )
         return match, completion.estimated_cost
 
-    def _persist_error(
+    def _finish_run(
         self,
         db: Session,
-        stock: Stock,
-        payload: dict[str, Any],
-        provider: AIProvider,
-        error: str,
+        run: AIRun,
+        provider_name: str,
+        provider_model: str,
+        *,
+        status: str,
+        result_dict: dict[str, Any] | None,
+        error_text: str | None,
+        total_cost: float | None,
+        duration_ms: int,
     ) -> AIRun:
-        run = AIRun(
-            isin=stock.isin,
-            agent_id=self.id,
-            created_at=utcnow(),
-            provider=getattr(provider, "name", "unknown"),
-            model=getattr(provider, "model", "unknown"),
-            status="error",
-            input_payload=payload,
-            result_payload=None,
-            error_text=error,
-            cost_estimate=None,
-            duration_ms=0,
-        )
+        run.provider = provider_name
+        run.model = provider_model
+        run.status = status
+        run.result_payload = result_dict
+        run.error_text = error_text
+        run.cost_estimate = total_cost
+        run.duration_ms = duration_ms
         db.add(run)
         db.commit()
         db.refresh(run)

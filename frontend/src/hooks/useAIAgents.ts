@@ -42,6 +42,15 @@ export function useAgentRuns(agentId: string, isin: string | undefined, limit = 
       return res.data as AIRun[];
     },
     staleTime: 30_000,
+    // Poll every 2s while at least one run is still in `running` state, so
+    // the UI swaps the inline spinner for the real result without a manual
+    // refresh. Returning `false` when nothing is in flight stops the polling
+    // loop entirely.
+    refetchInterval: (query) => {
+      const data = query.state.data as AIRun[] | undefined;
+      const hasRunning = data?.some((r) => r.status === "running");
+      return hasRunning ? 2_000 : false;
+    },
   });
 }
 
@@ -60,8 +69,18 @@ export function useRunAgent() {
       const res = await api.post(`/ai/agents/${agentId}/run/${isin}`, body);
       return res.data as AIRun;
     },
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: AI_RUNS_QUERY_KEY(vars.agentId, vars.isin) });
+    onSuccess: (run, vars) => {
+      // The endpoint now returns immediately with a `running` row. Prepend
+      // it optimistically so the section's spinner appears without waiting
+      // for the next poll, and invalidate so the eventual `done`/`error`
+      // update arrives via the polling refetch.
+      const key = AI_RUNS_QUERY_KEY(vars.agentId, vars.isin);
+      qc.setQueryData<AIRun[]>(key, (old) => {
+        if (!old) return [run];
+        if (old.some((r) => r.id === run.id)) return old;
+        return [run, ...old];
+      });
+      qc.invalidateQueries({ queryKey: key });
     },
   });
 }

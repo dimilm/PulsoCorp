@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -78,6 +79,19 @@ class StockUpdate(BaseModel):
         return _normalize_url(value)
 
 
+class AILatestRun(BaseModel):
+    """Compact projection of the most recent successful AI run for a stock.
+
+    Only the fields the watchlist pills need are exposed via `summary`; the
+    full run remains available through `/api/v1/ai/runs/{run_id}`.
+    """
+
+    agent_id: str
+    created_at: datetime
+    model: str
+    summary: dict[str, Any]
+
+
 class StockOut(StockBase):
     current_price: float | None = None
     day_change_pct: float | None = None
@@ -97,6 +111,7 @@ class StockOut(StockBase):
     debt_ratio: float | None = None
     revenue_growth: float | None = None
     missing_metrics: list[str] = Field(default_factory=list)
+    latest_ai_runs: dict[str, AILatestRun] = Field(default_factory=dict)
 
 
 class HistoryPoint(BaseModel):

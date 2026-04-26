@@ -133,9 +133,58 @@ def test_fisher_run_records_error_on_invalid_payload() -> None:
     assert run.error_text
 
 
-def test_fisher_endpoint_runs_agent_and_returns_run_row() -> None:
+def test_fisher_queue_run_creates_running_row_without_provider() -> None:
     stock = _seed_stock()
-    app.dependency_overrides[get_ai_provider] = lambda: _StubProvider(_sample_fisher_payload())
+    db = SessionLocal()
+    try:
+        run = FisherAgent().queue_run(db, db.get(Stock, stock.isin))
+        assert run.status == "running"
+        assert run.result_payload is None
+        assert run.error_text is None
+        assert run.duration_ms is None
+        assert run.input_payload  # populated via build_input
+        assert run.id is not None
+    finally:
+        db.close()
+
+
+def test_fisher_execute_run_updates_existing_row_to_done() -> None:
+    stock = _seed_stock()
+    db = SessionLocal()
+    try:
+        agent = FisherAgent()
+        run = agent.queue_run(db, db.get(Stock, stock.isin))
+        provider = _StubProvider(_sample_fisher_payload())
+        finished = asyncio.run(
+            agent.execute_run(db, provider, run, db.get(Stock, stock.isin))
+        )
+    finally:
+        db.close()
+    assert finished.id == run.id
+    assert finished.status == "done"
+    assert finished.provider == "stub"
+    assert finished.model == "stub-model"
+    assert finished.cost_estimate == 0.001
+    assert finished.duration_ms is not None and finished.duration_ms >= 0
+    assert finished.result_payload["total_score"] == 30
+
+
+def test_fisher_endpoint_queues_run_and_resolves_in_background() -> None:
+    """The route returns 202 with a running row; the BG task then finishes
+    it. With FastAPI's TestClient, background tasks complete before the
+    test continues, so we can assert on the persisted row afterwards."""
+    from app.api.v1.ai import execute_run_in_background  # noqa: F401
+
+    import app.services.ai_run_service as ai_run_service
+
+    captured_provider = _StubProvider(_sample_fisher_payload())
+
+    def _fake_build(_row):
+        return captured_provider
+
+    stock = _seed_stock()
+    original_build = ai_run_service.build_ai_provider
+    ai_run_service.build_ai_provider = _fake_build  # type: ignore[assignment]
     try:
         client = TestClient(app)
         csrf = _login(client)
@@ -144,9 +193,39 @@ def test_fisher_endpoint_runs_agent_and_returns_run_row() -> None:
             headers={"X-CSRF-Token": csrf},
         )
     finally:
-        app.dependency_overrides.pop(get_ai_provider, None)
-    assert resp.status_code == 200
+        ai_run_service.build_ai_provider = original_build  # type: ignore[assignment]
+
+    assert resp.status_code == 202
     body = resp.json()
     assert body["agent_id"] == "fisher"
-    assert body["status"] == "done"
-    assert body["result_payload"]["total_score"] == 30
+    assert body["status"] == "running"
+    assert body["result_payload"] is None
+    run_id = body["id"]
+
+    db = SessionLocal()
+    try:
+        run = db.get(AIRun, run_id)
+        assert run is not None
+        assert run.status == "done"
+        assert run.result_payload["total_score"] == 30
+        assert run.cost_estimate == 0.001
+    finally:
+        db.close()
+
+
+def test_fisher_endpoint_returns_409_when_run_already_in_flight() -> None:
+    stock = _seed_stock()
+    db = SessionLocal()
+    try:
+        existing = FisherAgent().queue_run(db, db.get(Stock, stock.isin))
+        assert existing.status == "running"
+    finally:
+        db.close()
+
+    client = TestClient(app)
+    csrf = _login(client)
+    resp = client.post(
+        f"/api/v1/ai/agents/fisher/run/{stock.isin}",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert resp.status_code == 409

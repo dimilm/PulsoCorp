@@ -72,12 +72,13 @@ def test_list_stocks_does_not_n_plus_one() -> None:
             detach()
 
         assert len(rows) == len(isins)
-        # With lazy="joined" we expect <= 3 SELECTs:
+        # With lazy="joined" we expect <= 4 SELECTs:
         # 1) the Stock query (with LEFT JOINs to market/metrics/position)
         # 2) the selectin tag fetch
+        # 3) the latest-AI-run window query (single statement for all rows)
         # The threshold gives a small budget for SQLAlchemy housekeeping but
         # is far below the previous 1 + 3*N pattern.
-        assert len(statements) <= 4, (
+        assert len(statements) <= 5, (
             f"Expected near-constant query count, got {len(statements)}: "
             + "\n".join(statements)
         )

@@ -4,8 +4,12 @@ The router exposes the agent registry to the frontend:
 
 * `GET /ai/agents` – lists every registered agent including its JSON output schema.
 * `GET /ai/agents/{id}/prompt` – serves the static prompt template (read-only).
-* `POST /ai/agents/{id}/run/{isin}` – synchronously executes the agent and
-  persists an `AIRun` row.
+* `POST /ai/agents/{id}/run/{isin}` – queues an agent run, returns immediately
+  with the freshly-created `AIRun` row in `status="running"`. The actual LLM
+  call happens in a FastAPI `BackgroundTasks` worker; the UI polls
+  `/ai/agents/{id}/runs/{isin}` (or `/ai/runs/{run_id}`) until the row flips
+  to `done` / `error`. Returns `409` if a run is already in flight for the
+  same `(agent, isin)` pair.
 * `GET /ai/agents/{id}/runs/{isin}` – history of past runs for a single
   stock + agent combination.
 * `GET /ai/runs/{run_id}` – fetches one persisted run with its full payload.
@@ -15,9 +19,10 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
+from starlette.status import HTTP_202_ACCEPTED, HTTP_409_CONFLICT
 
 from app.agents import get_agent, list_agents
 from app.api.deps import csrf_guard, get_ai_provider, get_current_user, require_admin
@@ -27,6 +32,7 @@ from app.models.settings import AppSettings
 from app.models.stock import Stock
 from app.providers.ai.base import AIProvider
 from app.schemas.ai import AgentInfoOut, AgentRunRequest, AIRunOut
+from app.services.ai_run_service import execute_run_in_background
 from app.services.provider_factory import build_ai_provider  # re-exported for monkeypatch back-compat
 from app.services.run_status_service import humanize_error
 
@@ -59,16 +65,25 @@ def get_agent_prompt(agent_id: str, _: dict = Depends(get_current_user)) -> str:
 @router.post(
     "/agents/{agent_id}/run/{isin}",
     response_model=AIRunOut,
+    status_code=HTTP_202_ACCEPTED,
     dependencies=[Depends(csrf_guard)],
 )
-async def run_agent(
+def run_agent(
     agent_id: str,
     isin: str,
+    background: BackgroundTasks,
     payload: AgentRunRequest | None = None,
     _: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
-    provider: AIProvider = Depends(get_ai_provider),
 ) -> AIRun:
+    """Queue an agent run and schedule the LLM call in the background.
+
+    Synchronous path: validate, create a `running` row, return it (HTTP 202).
+    The `BackgroundTasks` worker then opens a fresh DB session + provider
+    and resolves the row. The provider is intentionally *not* injected via
+    `Depends(get_ai_provider)` here because the request-scoped session
+    closes before the background task runs.
+    """
     agent = get_agent(agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -76,10 +91,27 @@ async def run_agent(
     if stock is None:
         raise HTTPException(status_code=404, detail="Stock not found")
 
+    existing = (
+        db.query(AIRun)
+        .filter(
+            AIRun.agent_id == agent_id,
+            AIRun.isin == stock.isin,
+            AIRun.status == "running",
+        )
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=HTTP_409_CONFLICT,
+            detail="Es läuft bereits eine Analyse dieses Agenten für dieses Unternehmen.",
+        )
+
     kwargs: dict = {}
     if payload is not None and payload.peers is not None:
         kwargs["peers"] = payload.peers
-    return await agent.run(db, provider, stock, **kwargs)
+    run = agent.queue_run(db, stock, **kwargs)
+    background.add_task(execute_run_in_background, run.id, agent_id, kwargs)
+    return run
 
 
 @router.get(

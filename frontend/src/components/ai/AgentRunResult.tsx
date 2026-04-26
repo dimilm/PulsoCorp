@@ -39,8 +39,31 @@ export function AgentRunResult({ run, currency }: Props) {
       );
     case "redflag":
       return <RedFlagResultView result={run.result_payload as unknown as RedFlagResult} />;
-    case "tournament":
-      return <TournamentResultView result={run.result_payload as unknown as TournamentResult} />;
+    case "tournament": {
+      // Tournament results store ISINs only — fish the human-readable
+      // company names back out of the `input_payload.participants` so the
+      // bracket reads "Apple" / "AAPL" instead of just "US0378331005".
+      const participants = (run.input_payload as { participants?: unknown })
+        ?.participants;
+      const participantsByIsin: Record<string, string> = {};
+      if (Array.isArray(participants)) {
+        for (const p of participants) {
+          if (p && typeof p === "object") {
+            const isin = (p as { isin?: unknown }).isin;
+            const name = (p as { name?: unknown }).name;
+            if (typeof isin === "string" && typeof name === "string" && name) {
+              participantsByIsin[isin] = name;
+            }
+          }
+        }
+      }
+      return (
+        <TournamentResultView
+          result={run.result_payload as unknown as TournamentResult}
+          participantsByIsin={participantsByIsin}
+        />
+      );
+    }
     default:
       return (
         <pre className="ai-result-raw">

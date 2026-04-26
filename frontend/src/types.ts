@@ -1,3 +1,38 @@
+export type AIAgentId = "fisher" | "scenario" | "redflag" | "tournament";
+
+export interface FisherPillSummary {
+  score: number;
+  verdict: "strong" | "neutral" | "weak";
+}
+
+export interface RedFlagPillSummary {
+  overall_risk: "low" | "med" | "high";
+  flag_count: number;
+}
+
+export interface ScenarioPillSummary {
+  expected_return_pct: number;
+}
+
+export interface TournamentPillSummary {
+  is_winner: boolean;
+  winner_isin: string;
+  peer_count: number;
+}
+
+export type AIPillSummary =
+  | FisherPillSummary
+  | RedFlagPillSummary
+  | ScenarioPillSummary
+  | TournamentPillSummary;
+
+export interface AILatestRun {
+  agent_id: string;
+  created_at: string;
+  model: string;
+  summary: Record<string, unknown>;
+}
+
 export interface Stock {
   isin: string;
   name: string;
@@ -30,6 +65,7 @@ export interface Stock {
   analyst_target_distance_pct: number | null;
   invested_capital_eur: number;
   tags: string[];
+  latest_ai_runs: Partial<Record<AIAgentId, AILatestRun>>;
 }
 
 export interface Tag {

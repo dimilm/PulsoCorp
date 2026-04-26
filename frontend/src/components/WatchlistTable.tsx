@@ -9,6 +9,7 @@ import {
   targetClass,
 } from "../lib/colorRules";
 import { tagColorClass } from "../lib/tagColor";
+import { AIPillRow } from "./ai/AIPillRow";
 import RowActionsMenu from "./RowActionsMenu";
 
 const MAX_VISIBLE_TAGS = 3;
@@ -76,6 +77,7 @@ export default function WatchlistTable({
           <SortHeader label="Kursziel %" keyName="analyst_target_distance_pct" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
           <SortHeader label="Div. %" keyName="dividend_yield_current" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
           <SortHeader label="Status" keyName="last_status" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
+          <th>KI</th>
           <th className="actions-header" aria-label="Aktionen" />
         </tr>
       </thead>
@@ -127,6 +129,9 @@ export default function WatchlistTable({
               </span>
             </td>
             <td>{s.last_status ?? "-"}</td>
+            <td className="ai-pills-cell">
+              <AIPillRow stock={s} />
+            </td>
             <td className="actions-cell">
               <RowActionsMenu
                 stock={s}

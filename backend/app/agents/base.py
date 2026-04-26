@@ -9,8 +9,16 @@ An agent is a small object that:
 4. Validates the structured response with its Pydantic `output_schema`.
 5. Persists an `AIRun` row capturing input, output, cost and status.
 
-The persistence step is shared so all agents end up in the same history
-table with the same shape.
+Persistence is split into two phases so the API can fire-and-forget agents:
+
+* `queue_run` synchronously writes a row with `status="running"` and the
+  resolved input payload, so the UI immediately gets a row to poll.
+* `execute_run` performs the actual LLM call (async) and updates the same
+  row to `status="done"` (or `"error"`) once the result is available.
+
+`run` is kept as the synchronous composition (`queue_run` + `execute_run`)
+so existing callers (tests, the Tournament-Agent's nested matches, ad-hoc
+CLI usage) keep working without changes.
 """
 from __future__ import annotations
 
@@ -62,15 +70,49 @@ class BaseAgent(ABC):
     def parse_output(self, raw_parsed: dict[str, Any]) -> BaseModel:
         return self.output_schema.model_validate(raw_parsed)
 
-    async def run(
+    def queue_run(self, db: Session, stock: Stock, **kwargs: Any) -> AIRun:
+        """Insert a `running` AIRun row and return it without calling the LLM.
+
+        The provider is unknown at queue-time (it is built later in the
+        background task with a fresh DB session), so we store sentinel
+        `pending` values that get overwritten by `execute_run`.
+        """
+        payload = self.build_input(db, stock, **kwargs)
+        run = AIRun(
+            isin=stock.isin,
+            agent_id=self.id,
+            created_at=utcnow(),
+            provider="pending",
+            model="pending",
+            status="running",
+            input_payload=payload,
+            result_payload=None,
+            error_text=None,
+            cost_estimate=None,
+            duration_ms=None,
+        )
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+        return run
+
+    async def execute_run(
         self,
         db: Session,
         provider: AIProvider,
+        run: AIRun,
         stock: Stock,
         **kwargs: Any,
     ) -> AIRun:
-        """Execute the agent end-to-end and persist a single `AIRun` row."""
-        payload = self.build_input(db, stock, **kwargs)
+        """Execute the LLM call for an already-queued `running` row.
+
+        Updates the existing row in place; safe to call from a background
+        task with its own DB session. `kwargs` are ignored at this level —
+        the input payload was already resolved during `queue_run`. Agents
+        that need bracket-style nested calls (e.g. tournament) override
+        this method and may use `kwargs` to access the original parameters.
+        """
+        payload = run.input_payload
         system_prompt, user_prompt = self.render_prompt(payload)
         schema = self.output_schema.model_json_schema()
         provider_name = getattr(provider, "name", provider.__class__.__name__.lower())
@@ -93,21 +135,32 @@ class BaseAgent(ABC):
             status = "error"
             error_text = str(exc) or exc.__class__.__name__
 
-        duration_ms = int((time.perf_counter() - started) * 1000)
-        run = AIRun(
-            isin=stock.isin,
-            agent_id=self.id,
-            created_at=utcnow(),
-            provider=provider_name,
-            model=provider_model,
-            status=status,
-            input_payload=payload,
-            result_payload=result_dict,
-            error_text=error_text,
-            cost_estimate=completion.estimated_cost if completion is not None else None,
-            duration_ms=duration_ms,
+        run.provider = provider_name
+        run.model = provider_model
+        run.status = status
+        run.result_payload = result_dict
+        run.error_text = error_text
+        run.cost_estimate = (
+            completion.estimated_cost if completion is not None else None
         )
+        run.duration_ms = int((time.perf_counter() - started) * 1000)
         db.add(run)
         db.commit()
         db.refresh(run)
         return run
+
+    async def run(
+        self,
+        db: Session,
+        provider: AIProvider,
+        stock: Stock,
+        **kwargs: Any,
+    ) -> AIRun:
+        """Execute the agent end-to-end and persist a single `AIRun` row.
+
+        Convenience composition of `queue_run` + `execute_run` for callers
+        that don't care about the queued/running intermediate state (tests,
+        nested usage, scripts).
+        """
+        run = self.queue_run(db, stock, **kwargs)
+        return await self.execute_run(db, provider, run, stock, **kwargs)
