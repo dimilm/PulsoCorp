@@ -35,9 +35,9 @@ JSON-Objekt im beschriebenen Schema.
 ## Eingabedaten
 
 JSON mit `name`, `sector`, `currency`, `current_price`, `metrics`,
-`burggraben`, `reasoning`. Wenn ein Datenpunkt fehlt, ist das selbst keine
-Red Flag, kann aber im `evidence_hint` einer „Datenlücke"-Flag erwähnt
-werden, falls relevant.
+`tags` (Liste von Klassifizierungs-Tags wie z. B. `moat`), `reasoning`.
+Wenn ein Datenpunkt fehlt, ist das selbst keine Red Flag, kann aber im
+`evidence_hint` einer „Datenlücke"-Flag erwähnt werden, falls relevant.
 
 ## Antwortformat (Pflicht)
 

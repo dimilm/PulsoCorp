@@ -48,7 +48,6 @@ def test_csrf_required_for_mutations() -> None:
         "name": "CSRF Guard Stock",
         "sector": "Tech",
         "currency": "USD",
-        "burggraben": False,
         "tranches": 0,
     }
     # Missing header -> 403

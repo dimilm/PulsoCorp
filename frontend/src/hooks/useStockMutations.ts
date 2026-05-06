@@ -4,6 +4,11 @@ import { api } from "../api/client";
 
 export const STOCKS_QUERY_KEY = ["stocks"] as const;
 
+/** Narrower key for the paginated/filtered watchlist list queries only.
+ *  Invalidate this instead of the broad STOCKS_QUERY_KEY to avoid
+ *  busting detail, history, and peers caches unnecessarily. */
+export const STOCKS_LIST_KEY = [...STOCKS_QUERY_KEY, "list"] as const;
+
 export interface RefreshKickoff {
   run_id: number | null;
   phase: string | null;
@@ -31,7 +36,7 @@ export function useDeleteStock() {
   return useMutation({
     mutationFn: (isin: string) => api.delete(`/stocks/${isin}`),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: STOCKS_QUERY_KEY });
+      await qc.invalidateQueries({ queryKey: STOCKS_LIST_KEY });
       await qc.invalidateQueries({ queryKey: ["tags"] });
     },
   });

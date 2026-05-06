@@ -21,7 +21,7 @@ def build_stock_context(db: Session, stock: Stock) -> dict[str, Any]:
         "name": stock.name,
         "sector": stock.sector,
         "currency": stock.currency,
-        "burggraben": bool(stock.burggraben),
+        "tags": sorted(t.name for t in (stock.tags or [])),
         "reasoning": stock.reasoning,
         "current_price": market.current_price if market else None,
         "day_change_pct": market.day_change_pct if market else None,

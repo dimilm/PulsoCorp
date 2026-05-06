@@ -98,7 +98,7 @@ function FilterPill({
 }
 
 export function RunsPage() {
-  useDocumentTitle("Runs");
+  useDocumentTitle("Aktualisierungen");
   const queryClient = useQueryClient();
   const triggerRefresh = useTriggerRefreshAll();
   const cancelRefresh = useCancelRefreshAll();
@@ -147,9 +147,13 @@ export function RunsPage() {
     placeholderData: keepPreviousData,
   });
 
+  const [historyType, setHistoryType] = useState<"all" | "market" | "jobs">("all");
   const historyQuery = useQuery<RunSummary[]>({
-    queryKey: ["run-logs"],
-    queryFn: async () => (await api.get("/run-logs")).data,
+    queryKey: ["run-logs", historyType],
+    queryFn: async () => {
+      const params = historyType === "all" ? {} : { run_type: historyType };
+      return (await api.get("/run-logs", { params })).data;
+    },
     enabled: showHistory,
   });
 
@@ -167,7 +171,7 @@ export function RunsPage() {
     lastPhaseRef.current = current.phase;
   }, [current?.phase, current, queryClient]);
 
-  const stocks = stocksQuery.data ?? [];
+  const stocks = useMemo(() => stocksQuery.data ?? [], [stocksQuery.data]);
   const counters = useMemo(() => {
     const c: Record<StepStatus, number> = {
       not_started: 0,
@@ -198,7 +202,7 @@ export function RunsPage() {
       <div className="page">
         <header className="page-header">
           <div className="page-header-title">
-            <h2>Laufstatus</h2>
+            <h2>Aktualisierungen</h2>
           </div>
           <div className="page-header-actions">
             <button
@@ -225,7 +229,7 @@ export function RunsPage() {
       <div className="page">
         <header className="page-header">
           <div className="page-header-title">
-            <h2>Laufstatus</h2>
+            <h2>Aktualisierungen</h2>
           </div>
           <div className="page-header-actions">
             <button
@@ -266,7 +270,7 @@ export function RunsPage() {
       <header className="page-header">
         <div className="page-header-title">
           <h2>
-            Laufstatus
+            Aktualisierungen
             <span className="muted-count">
               {" "}
               · Run #{current.id} · {phaseLabel(current.phase)}
@@ -426,7 +430,32 @@ export function RunsPage() {
 
       {showHistory && (
         <section className="run-history">
-          <h3>Historie</h3>
+          <div className="run-history-head">
+            <h3>Historie</h3>
+            <div className="jobs-toolbar-filters">
+              <button
+                type="button"
+                className={`run-filter-pill${historyType === "all" ? " is-active" : ""}`}
+                onClick={() => setHistoryType("all")}
+              >
+                Alle
+              </button>
+              <button
+                type="button"
+                className={`run-filter-pill${historyType === "market" ? " is-active" : ""}`}
+                onClick={() => setHistoryType("market")}
+              >
+                Marktdaten
+              </button>
+              <button
+                type="button"
+                className={`run-filter-pill${historyType === "jobs" ? " is-active" : ""}`}
+                onClick={() => setHistoryType("jobs")}
+              >
+                Jobs
+              </button>
+            </div>
+          </div>
           {historyQuery.isLoading ? (
             <Spinner label="Lade Historie…" />
           ) : (
@@ -434,6 +463,7 @@ export function RunsPage() {
               <thead>
                 <tr>
                   <th>Run</th>
+                  <th>Typ</th>
                   <th>Start</th>
                   <th>Phase</th>
                   <th>Status</th>
@@ -445,6 +475,11 @@ export function RunsPage() {
                 {(historyQuery.data ?? []).map((r) => (
                   <tr key={r.id}>
                     <td>#{r.id}</td>
+                    <td>
+                      <span className={`badge ${r.run_type === "jobs" ? "badge-muted" : "run-badge-done"}`}>
+                        {r.run_type === "jobs" ? "Jobs" : "Markt"}
+                      </span>
+                    </td>
                     <td>{formatDateTime(r.started_at)}</td>
                     <td>{phaseLabel(r.phase)}</td>
                     <td>{runStatusLabel(r.status)}</td>

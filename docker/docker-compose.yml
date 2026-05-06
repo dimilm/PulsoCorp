@@ -11,11 +11,42 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.backend
+      args:
+        # Set INSTALL_PLAYWRIGHT=1 in docker/.env (and re-run
+        # `docker compose up --build`) to bake the optional `playwright`
+        # extra plus Chromium + its system libs into the image. Required
+        # for any job_source whose adapter_type is one of
+        # playwright_api_fetch / playwright_css_count / playwright_text_regex.
+        # Default 0 keeps the image slim (~500 MB Chromium savings) -- see
+        # ADR 0002.
+        INSTALL_PLAYWRIGHT: ${INSTALL_PLAYWRIGHT:-0}
+        # Corporate-proxy escape hatch: set PLAYWRIGHT_INSECURE_DOWNLOAD=1
+        # in docker/.env if `playwright install` aborts during the build with
+        # `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`. Skips Node's TLS check for the
+        # one-shot Chromium download from cdn.playwright.dev only; runtime
+        # Playwright is unaffected. See README for the cleaner CA-bundle path.
+        PLAYWRIGHT_INSECURE_DOWNLOAD: ${PLAYWRIGHT_INSECURE_DOWNLOAD:-0}
     environment:
       DATABASE_URL: sqlite:////data/sqlite.db
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set in .env (generate via Fernet.generate_key())}
       SEED_JSON_PATH: ${SEED_JSON_PATH:-app/seed/stocks.seed.json}
+      # Cookie security flags. Default to a hardened HTTPS posture (Secure +
+      # SameSite=Lax). MUST be overridden to COOKIE_SECURE=false when the app
+      # is served over plain HTTP (e.g. a bare-IP deployment without a TLS
+      # terminator), otherwise browsers silently drop the auth + CSRF cookies
+      # and every authenticated request fails with `Missing auth cookie`.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      # Some Docker Desktop installs (especially corporate ones) inject
+      # HTTP_PROXY / HTTPS_PROXY into every container. Without an explicit
+      # NO_PROXY the healthcheck below routes its `http://localhost:8000/...`
+      # request through that proxy and fails with a 502, even though the
+      # backend itself answers fine on the loopback. Make sure loopback
+      # traffic stays local. Both casings because Python/curl/wget read
+      # different ones.
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,::1}
     volumes:
       # Named volume (lives on ext4 inside the WSL2 VM). A host bind mount of
       # ../data does NOT work on Docker Desktop / Windows because the gRPC-FUSE
@@ -53,6 +84,12 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.frontend
+    environment:
+      # Same loopback exemption as for the backend: the wget healthcheck
+      # below targets http://localhost/healthz and would otherwise be
+      # routed through the corporate HTTP_PROXY injected by Docker Desktop.
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,::1}
     ports:
       - "8080:80"
     # Plain `service_started` (the implicit default) means the SPA is

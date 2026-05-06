@@ -24,7 +24,6 @@ def export_csv(_: dict = Depends(get_current_user), db: Session = Depends(get_db
             "name",
             "sector",
             "currency",
-            "burggraben",
             "tranches",
             "current_price",
             "day_change_pct",

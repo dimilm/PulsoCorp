@@ -66,7 +66,6 @@ def list_stocks(
     db: Session,
     query: str | None = None,
     sector: str | None = None,
-    burggraben: bool | None = None,
     tags: list[str] | None = None,
     tags_mode: str = "any",
 ) -> list[dict]:
@@ -76,8 +75,6 @@ def list_stocks(
         q = q.filter(or_(Stock.name.ilike(like), Stock.isin.ilike(like)))
     if sector:
         q = q.filter(Stock.sector == sector)
-    if burggraben is not None:
-        q = q.filter(Stock.burggraben == burggraben)
 
     normalized_tags: list[str] = []
     if tags:
@@ -176,7 +173,6 @@ def to_stock_out(
         "name": stock.name,
         "sector": stock.sector,
         "currency": stock.currency,
-        "burggraben": stock.burggraben,
         "reasoning": stock.reasoning,
         "ticker_override": stock.ticker_override,
         "link_yahoo": stock.link_yahoo,
@@ -251,7 +247,6 @@ def create_stock(db: Session, payload: StockCreate) -> Stock:
         name=payload.name.strip(),
         sector=payload.sector,
         currency=payload.currency,
-        burggraben=payload.burggraben,
         reasoning=payload.reasoning,
         ticker_override=payload.ticker_override,
         link_yahoo=payload.link_yahoo,
@@ -274,7 +269,6 @@ STOCK_PATCH_FIELDS = (
     "name",
     "sector",
     "currency",
-    "burggraben",
     "reasoning",
     "ticker_override",
     "link_yahoo",
@@ -343,12 +337,11 @@ def _extract_row_data(row: list[str]) -> dict | None:
     if tranches == 0 and sum_tranches:
         tranches = int(round(sum_tranches))
 
-    return {
+    extracted: dict = {
         "isin": isin,
         "name": name,
         "sector": _safe_get(row, CSV_COL_SECTOR),
         "currency": _safe_get(row, CSV_COL_PRIMARY_CURRENCY),
-        "burggraben": bool((burggraben_tranches or 0) > 0),
         "tranches": tranches,
         "reasoning": _safe_get(row, CSV_COL_REASONING),
         "link_yahoo": _as_url(_safe_get(row, CSV_COL_YAHOO_LINK)),
@@ -356,6 +349,12 @@ def _extract_row_data(row: list[str]) -> dict | None:
         "link_onvista_chart": _as_url(_safe_get(row, CSV_COL_ONVISTA_CHART_LINK)),
         "link_onvista_fundamental": _as_url(_safe_get(row, CSV_COL_ONVISTA_FUNDAMENTAL_LINK)),
     }
+    # Only emit a tag list when the CSV signals burggraben/moat. Omitting
+    # the key on plain rows keeps `upsert_seed_row` from wiping general
+    # tags the user may have added manually via the UI.
+    if (burggraben_tranches or 0) > 0:
+        extracted["tags"] = ["moat"]
+    return extracted
 
 
 def build_seed_rows(db: Session) -> list[dict]:
@@ -374,7 +373,6 @@ def build_seed_rows(db: Session) -> list[dict]:
             "name": stock.name,
             "sector": stock.sector,
             "currency": stock.currency,
-            "burggraben": bool(stock.burggraben),
             "tranches": int(position.tranches) if position and position.tranches is not None else 0,
             "reasoning": stock.reasoning,
             "link_yahoo": stock.link_yahoo,
@@ -402,7 +400,6 @@ def upsert_seed_row(db: Session, row: dict) -> None:
             name=row["name"],
             sector=row.get("sector"),
             currency=row.get("currency"),
-            burggraben=row.get("burggraben", False),
             reasoning=row.get("reasoning"),
             link_yahoo=row.get("link_yahoo"),
             link_finanzen=row.get("link_finanzen"),

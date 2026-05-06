@@ -12,6 +12,9 @@ class SettingsOut(BaseModel):
     # Derived flag: lets the UI render "Schlüssel hinterlegt" without the key
     # itself ever leaving the backend. Never stored on the model row.
     ai_api_key_set: bool = False
+    jobs_enabled: bool = True
+    jobs_update_hour: int = 2
+    jobs_update_minute: int = 0
 
 
 class SettingsUpdate(BaseModel):
@@ -23,3 +26,6 @@ class SettingsUpdate(BaseModel):
     ai_model: str | None = None
     ai_refresh_interval: str | None = None
     ai_api_key: str | None = None
+    jobs_enabled: bool | None = None
+    jobs_update_hour: int | None = None
+    jobs_update_minute: int | None = None

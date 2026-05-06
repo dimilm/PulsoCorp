@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     cookie_samesite: str = "lax"
     encryption_key: str = "change-me-32-byte-key-change-me-32b"
     seed_json_path: str = "app/seed/stocks.seed.json"
+    job_sources_seed_json_path: str = "app/seed/job_sources.seed.json"
 
     # NOTE: cron schedule + weekend toggle live in `AppSettings` (DB row), not
     # here, because the user changes them via the Settings page at runtime.

@@ -3,14 +3,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 export interface FilterValues {
   query: string;
   sector: string;
-  onlyMoat: boolean;
   tags: string[];
 }
 
 export const emptyFilters: FilterValues = {
   query: "",
   sector: "",
-  onlyMoat: false,
   tags: [],
 };
 
@@ -18,7 +16,6 @@ export function buildStocksParams(v: FilterValues) {
   return {
     query: v.query,
     sector: v.sector || undefined,
-    burggraben: v.onlyMoat ? true : undefined,
     tags: v.tags.length > 0 ? v.tags.join(",") : undefined,
   };
 }

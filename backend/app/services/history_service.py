@@ -17,7 +17,7 @@ never blocks on a full-stock refresh and vice versa.
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import timedelta
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -83,7 +83,7 @@ class HistoryService:
             PriceHistory.interval == interval,
         )
         if days_back is not None:
-            cutoff = date.today() - timedelta(days=days_back)
+            cutoff = utcnow().date() - timedelta(days=days_back)
             q = q.filter(PriceHistory.date >= cutoff)
         rows = q.order_by(PriceHistory.date.asc()).all()
 

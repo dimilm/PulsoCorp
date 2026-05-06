@@ -56,7 +56,7 @@ export const editStockSchema: Schema<EditStockFormShape> = {
   // "BRK-B"). The form already strips whitespace and uppercases on input,
   // so this just guards against pasted garbage like "  SIE DE ".
   ticker_override: optional(
-    pattern(/^[A-Z0-9][A-Z0-9.\-]*$/, "Ticker: Buchstaben, Ziffern, Punkt oder Bindestrich.")
+    pattern(/^[A-Z0-9][A-Z0-9.-]*$/, "Ticker: Buchstaben, Ziffern, Punkt oder Bindestrich.")
   ),
   link_yahoo: optionalUrl,
   link_finanzen: optionalUrl,

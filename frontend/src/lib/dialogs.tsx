@@ -152,6 +152,7 @@ function ConfirmDialog({
             type="button"
             className={opts.destructive ? "btn-danger" : "btn-primary"}
             onClick={() => onResolve(true)}
+            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
           >
             {confirmLabel}
@@ -210,6 +211,7 @@ function PromptDialog({
             setValue(e.target.value);
             if (error) setError(null);
           }}
+          // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           className="dialog-prompt-input"
         />
@@ -237,7 +239,9 @@ function AlertDialog({
       onClose={onResolve}
       title={opts.title ?? defaultAlertTitle(variant)}
       footer={
-        <button type="button" className="btn-primary" onClick={onResolve} autoFocus>
+        <button type="button" className="btn-primary" onClick={onResolve}
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus>
           {opts.confirmLabel ?? "OK"}
         </button>
       }

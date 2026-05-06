@@ -19,7 +19,6 @@ def _base_payload(**overrides: object) -> dict:
         "name": "Apple Inc.",
         "sector": "Tech",
         "currency": "USD",
-        "burggraben": False,
         "tranches": 0,
         "tags": [],
     }

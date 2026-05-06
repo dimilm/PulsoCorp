@@ -6,6 +6,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AuthProvider } from "./hooks/useAuth";
+import { CurrentRunProvider } from "./lib/runProgress";
 import "./styles.css";
 
 const queryClient = new QueryClient();
@@ -16,7 +17,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <AuthProvider>
-            <App />
+            <CurrentRunProvider>
+              <App />
+            </CurrentRunProvider>
           </AuthProvider>
         </BrowserRouter>
       </QueryClientProvider>

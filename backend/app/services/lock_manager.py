@@ -146,12 +146,31 @@ def heartbeat_lock(
     return result.rowcount == 1
 
 
-def recover_stale_locks(name: str, ttl: timedelta = LOCK_HEARTBEAT_TTL) -> None:
+def recover_stale_locks(
+    name: str,
+    ttl: timedelta = LOCK_HEARTBEAT_TTL,
+    *,
+    run_type: str | None = None,
+) -> None:
     """Release locks whose owner crashed and finalise the orphaned runs.
 
-    Called from the FastAPI lifespan on every startup. Any refresh that was
-    interrupted is also marked as `phase=finished / status=error` so the UI
+    Called from the FastAPI lifespan on every startup. Any run that was
+    interrupted is also marked as ``phase=finished / status=error`` so the UI
     does not keep showing a perpetually-running run.
+
+    Parameters
+    ----------
+    name:
+        Name of the ``JobLock`` row to check.
+    ttl:
+        Heartbeat TTL; locks whose heartbeat is older than this are reclaimed.
+    run_type:
+        When provided, only finalises ``RunLog`` rows with a matching
+        ``run_type``.  Pass ``"market"`` to restrict recovery to market-data
+        runs (including legacy rows where ``run_type`` is ``NULL``), or
+        ``"jobs"`` to restrict to job-scrape runs.  The default ``None``
+        finalises all stuck runs regardless of type (backward-compatible
+        behaviour).
     """
     db = SessionLocal()
     try:
@@ -166,9 +185,16 @@ def recover_stale_locks(name: str, ttl: timedelta = LOCK_HEARTBEAT_TTL) -> None:
             lock.locked = False
             lock.owner = None
             db.add(lock)
-            for stuck in (
-                db.query(RunLog).filter(RunLog.phase.in_(("queued", "running"))).all()
-            ):
+            query = db.query(RunLog).filter(RunLog.phase.in_(("queued", "running")))
+            if run_type == "market":
+                # Include legacy rows created before the run_type column was
+                # added (NULL) as well as rows explicitly tagged "market".
+                query = query.filter(
+                    (RunLog.run_type == "market") | RunLog.run_type.is_(None)
+                )
+            elif run_type is not None:
+                query = query.filter(RunLog.run_type == run_type)
+            for stuck in query.all():
                 stuck.phase = "finished"
                 stuck.status = "error"
                 stuck.finished_at = utcnow()

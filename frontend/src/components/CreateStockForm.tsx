@@ -6,7 +6,6 @@ export interface StockFormValues {
   name: string;
   sector: string;
   currency: string;
-  burggraben: boolean;
   tranches: string;
   tags: string[];
 }
@@ -102,22 +101,6 @@ export function CreateStockForm({
             placeholder="z. B. Industrie, Tech, Healthcare"
           />
         </div>
-
-        <label className="toggle-row" htmlFor={`${formId}-burggraben`}>
-          <input
-            id={`${formId}-burggraben`}
-            type="checkbox"
-            checked={values.burggraben}
-            onChange={(e) => set("burggraben", e.target.checked)}
-          />
-          <span className="toggle-switch" aria-hidden="true">
-            <span className="toggle-knob" />
-          </span>
-          <span className="toggle-text">
-            <span className="toggle-title">Burggraben</span>
-            <span className="toggle-help">Unternehmen besitzt einen nachhaltigen Wettbewerbsvorteil</span>
-          </span>
-        </label>
       </fieldset>
 
       <fieldset className="form-section">

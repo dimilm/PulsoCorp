@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { extractApiError } from "../../lib/apiError";
-import { formatDate } from "../../lib/format";
+import { formatDate, parseBackendDate } from "../../lib/format";
 import type { AgentInfo, AIRun } from "../../types";
 import { EmptyState } from "../EmptyState";
 import { Modal } from "../Modal";
@@ -105,6 +105,7 @@ export function AgentSection({
   // the explicit selection so we fall back to the newest one.
   useEffect(() => {
     if (pickedRunId != null && !runs.some((r) => r.id === pickedRunId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPickedRunId(null);
     }
   }, [pickedRunId, runs]);
@@ -261,11 +262,11 @@ interface RunningPlaceholderProps {
 }
 
 // Live "läuft seit Xs"-counter for an in-flight run. Mirrors the approach used
-// by the refresh-status card (`liveRunSeconds`): naive ISO strings from the
-// backend get parsed by `new Date()` which interprets them as local time —
-// good enough for a one-second resolution, identical to the rest of the app.
+// by the refresh-status card (`liveRunSeconds`) and routes naive backend ISO
+// strings through `parseBackendDate` so the counter is not skewed by the
+// host's UTC offset.
 function RunningPlaceholder({ startedAt }: RunningPlaceholderProps) {
-  const startMs = useMemo(() => new Date(startedAt).getTime(), [startedAt]);
+  const startMs = useMemo(() => parseBackendDate(startedAt).getTime(), [startedAt]);
   const [elapsed, setElapsed] = useState(() => {
     if (Number.isNaN(startMs)) return 0;
     return Math.max(0, Math.floor((Date.now() - startMs) / 1000));

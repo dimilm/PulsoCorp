@@ -89,6 +89,7 @@ export function TagInput({
   const showSuggestions = focused && (filteredSuggestions.length > 0 || query.length > 0);
 
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className={`tag-input-wrap ${focused ? "is-focused" : ""}`.trim()}
       onClick={() => inputRef.current?.focus()}
@@ -152,7 +153,7 @@ export function TagInput({
           ))}
           {filteredSuggestions.length === 0 && query && (
             <div className="tag-suggestion-empty">
-              Kein passender Tag gefunden. Mit Enter wird "{query}" neu erstellt.
+              Kein passender Tag gefunden. Mit Enter wird &quot;{query}&quot; neu erstellt.
             </div>
           )}
         </div>

@@ -31,6 +31,10 @@
     padding: 8px 12px;
   }
 
+  nav .nav-sep {
+    display: none;
+  }
+
   nav .nav-user {
     margin-left: 0;
     order: 99;

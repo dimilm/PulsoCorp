@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 class RunLogOut(BaseModel):
     id: int
+    run_type: str = "market"
     started_at: datetime
     finished_at: datetime | None = None
     duration_seconds: int

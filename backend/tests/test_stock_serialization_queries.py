@@ -31,7 +31,6 @@ def _seed_stocks(db, sector: str, count: int = 5) -> list[str]:
                 name=f"{sector} {idx}",
                 sector=sector,
                 currency="USD",
-                burggraben=False,
             )
         )
         db.merge(Position(isin=isin, tranches=idx))

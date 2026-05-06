@@ -21,6 +21,7 @@ export interface RunStockStatus {
 
 export interface RunSummary {
   id: number;
+  run_type: "market" | "jobs";
   started_at: string;
   finished_at: string | null;
   duration_seconds: number;

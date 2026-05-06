@@ -8,6 +8,20 @@ function isMissing(value: unknown): boolean {
   return value === null || value === undefined || (typeof value === "number" && Number.isNaN(value));
 }
 
+// Backend ships *naive* UTC ISO strings ("2026-05-03T14:29:00") because the
+// SQLAlchemy `DateTime` columns store naive datetimes via `app.core.time.utcnow`.
+// Without a timezone designator the browser interprets such strings as *local*
+// time, which silently shifts every timestamp by the host's UTC offset (e.g.
+// +2h in CEST → "Bisher" counter starts at 2h instead of 0). Force UTC parsing
+// by appending `Z` when the string carries time-of-day but no tz info. Inputs
+// that already include a tz (`Z`, `+02:00`, `-0500`) or are date-only pass
+// through unchanged.
+export function parseBackendDate(value: string): Date {
+  const hasTime = /T\d{2}:\d{2}/.test(value);
+  const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(value);
+  return new Date(hasTime && !hasTz ? `${value}Z` : value);
+}
+
 export function formatNumber(value: number | null | undefined, fractionDigits = 2): string {
   if (isMissing(value)) return DASH;
   return (value as number).toLocaleString(LOCALE, {
@@ -81,7 +95,7 @@ export function formatLargeCurrency(
 // Long form date+time: "26.04.26, 13:42"
 export function formatDate(value: string | null | undefined): string {
   if (!value) return DASH;
-  const d = new Date(value);
+  const d = parseBackendDate(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleString(LOCALE, {
     year: "numeric",
@@ -92,10 +106,23 @@ export function formatDate(value: string | null | undefined): string {
   });
 }
 
+// Date-only ("26.04.2026"). Important for backend `date` fields like
+// `latest_snapshot_date` where no time-of-day exists.
+export function formatDateOnly(value: string | null | undefined): string {
+  if (!value) return DASH;
+  const d = parseBackendDate(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString(LOCALE, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
 // Run history-style timestamp ("26.04.26, 13:42:07")
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return DASH;
-  const d = new Date(value);
+  const d = parseBackendDate(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "medium" });
 }
@@ -103,7 +130,7 @@ export function formatDateTime(value: string | null | undefined): string {
 // Time-only ("13:42:07")
 export function formatTimeShort(value: string | null | undefined): string {
   if (!value) return DASH;
-  const d = new Date(value);
+  const d = parseBackendDate(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }

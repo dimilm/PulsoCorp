@@ -11,7 +11,6 @@ describe("parseWatchlistUrl", () => {
     const state = parseWatchlistUrl(new URLSearchParams(""));
     expect(state.filters.query).toBe("");
     expect(state.filters.sector).toBe("");
-    expect(state.filters.onlyMoat).toBe(false);
     expect(state.filters.tags).toEqual([]);
     expect(state.sortBy).toBe("name");
     expect(state.sortDir).toBe("asc");
@@ -19,11 +18,10 @@ describe("parseWatchlistUrl", () => {
 
   it("decodes filters and sort", () => {
     const state = parseWatchlistUrl(
-      new URLSearchParams("q=apple&sector=Tech&moat=1&tags=growth,ai&sortBy=score&sortDir=desc")
+      new URLSearchParams("q=apple&sector=Tech&tags=growth,ai&sortBy=score&sortDir=desc")
     );
     expect(state.filters.query).toBe("apple");
     expect(state.filters.sector).toBe("Tech");
-    expect(state.filters.onlyMoat).toBe(true);
     expect(state.filters.tags).toEqual(["growth", "ai"]);
     expect(state.sortBy).toBe("score");
     expect(state.sortDir).toBe("desc");
@@ -38,7 +36,7 @@ describe("parseWatchlistUrl", () => {
 describe("buildWatchlistUrl", () => {
   it("strips defaults so the URL stays clean", () => {
     const params = buildWatchlistUrl({
-      filters: { query: "", sector: "", onlyMoat: false, tags: [] },
+      filters: { query: "", sector: "", tags: [] },
       sortBy: "name",
       sortDir: "asc",
     });
@@ -47,13 +45,12 @@ describe("buildWatchlistUrl", () => {
 
   it("encodes only set values", () => {
     const params = buildWatchlistUrl({
-      filters: { query: "x", sector: "Tech", onlyMoat: true, tags: ["a", "b"] },
+      filters: { query: "x", sector: "Tech", tags: ["a", "b"] },
       sortBy: "score",
       sortDir: "desc",
     });
     expect(params.get("q")).toBe("x");
     expect(params.get("sector")).toBe("Tech");
-    expect(params.get("moat")).toBe("1");
     expect(params.get("tags")).toBe("a,b");
     expect(params.get("sortBy")).toBe("score");
     expect(params.get("sortDir")).toBe("desc");
@@ -61,7 +58,7 @@ describe("buildWatchlistUrl", () => {
 
   it("round-trips through parse", () => {
     const original = {
-      filters: { query: "x", sector: "Tech", onlyMoat: true, tags: ["a", "b"] },
+      filters: { query: "x", sector: "Tech", tags: ["a", "b"] },
       sortBy: "score",
       sortDir: "desc" as const,
     };

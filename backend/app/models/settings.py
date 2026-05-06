@@ -16,3 +16,10 @@ class AppSettings(Base):
     ai_api_key_encrypted: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     ai_model: Mapped[str] = mapped_column(String(128), default="gpt-4o-mini", nullable=False)
     ai_refresh_interval: Mapped[str] = mapped_column(String(16), default="monthly", nullable=False)
+
+    # Job-scrape scheduler – runs independently from the market-data refresh
+    # because portals are typically slow + rate-limited and the user may want
+    # to scrape outside market hours (default 02:00 local time).
+    jobs_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    jobs_update_hour: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    jobs_update_minute: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

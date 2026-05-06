@@ -90,7 +90,7 @@ def _seed_stock() -> Stock:
         db.close()
 
 
-def test_fisher_build_input_includes_metrics_and_burggraben() -> None:
+def test_fisher_build_input_includes_metrics_and_tags() -> None:
     stock = _seed_stock()
     db = SessionLocal()
     try:
@@ -100,7 +100,8 @@ def test_fisher_build_input_includes_metrics_and_burggraben() -> None:
     assert payload["isin"] == "FISH00000001"
     assert payload["name"] == "Fisher Test"
     assert "metrics" in payload
-    assert "burggraben" in payload
+    assert "tags" in payload
+    assert isinstance(payload["tags"], list)
 
 
 def test_fisher_run_persists_done_run_with_parsed_result() -> None:

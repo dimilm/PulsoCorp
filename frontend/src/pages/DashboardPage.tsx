@@ -9,7 +9,6 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   formatCurrency,
   formatDateTime,
-  formatNumber,
   formatPercent,
 } from "../lib/format";
 import { phaseLabel, runStatusLabel } from "../lib/runProgress";
@@ -21,7 +20,6 @@ interface DashboardData {
   portfolio_value_eur: number;
   portfolio_day_change_eur: number;
   portfolio_day_change_pct: number;
-  moat_share_pct: number;
   last_run?: {
     id?: number | null;
     started_at?: string | null;
@@ -213,11 +211,6 @@ export function DashboardPage() {
         <KpiCard
           label="Aktien gesamt"
           value={String(totalStocks)}
-          hint={
-            data.moat_share_pct > 0
-              ? `Burggraben: ${formatNumber(data.moat_share_pct, 0)} %`
-              : undefined
-          }
         />
         <KpiCard
           label="Investiertes Kapital"
@@ -242,11 +235,6 @@ export function DashboardPage() {
             label: `${dayChangeEur > 0 ? "+" : ""}${formatCurrency(dayChangeEur, "EUR")}`,
             tone: changeTone(dayChangeEur),
           }}
-        />
-        <KpiCard
-          label="Burggraben-Anteil"
-          value={`${formatNumber(data.moat_share_pct ?? 0, 1)} %`}
-          hint="bezogen auf investiertes Kapital"
         />
       </section>
 

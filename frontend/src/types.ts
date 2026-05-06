@@ -38,7 +38,6 @@ export interface Stock {
   name: string;
   sector: string | null;
   currency: string | null;
-  burggraben: boolean;
   reasoning: string | null;
   ticker_override?: string | null;
   link_yahoo?: string | null;

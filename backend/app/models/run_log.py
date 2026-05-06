@@ -11,9 +11,17 @@ class RunLog(Base):
     __tablename__ = "run_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Distinguishes between the market-data refresh (default) and the jobs
+    # scrape pipeline. Both reuse the same row shape and the existing UI
+    # plumbing (`/run-logs`, current-run banner) but live on separate locks
+    # so they can run in parallel and surface independently.
+    run_type: Mapped[str] = mapped_column(String(16), default="market", nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     duration_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # `stocks_*` counters are reused for both run types. For jobs runs they
+    # represent job sources rather than stocks; the column names stay intact
+    # to keep the existing UI/types untouched.
     stocks_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     stocks_done: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     stocks_success: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -26,6 +34,7 @@ class RunLog(Base):
 
 Index("ix_run_logs_phase", RunLog.phase)
 Index("ix_run_logs_started_at", RunLog.started_at)
+Index("ix_run_logs_run_type", RunLog.run_type)
 
 
 class RunStockStatus(Base):

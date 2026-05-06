@@ -9,7 +9,7 @@ import pytest
 from app.core.time import utcnow
 from app.db.session import SessionLocal
 from app.models.run_log import JobLock, RunLog
-from app.services import lock_manager, scheduler_service as ss
+from app.services import jobs_service, lock_manager, scheduler_service as ss
 
 
 @pytest.fixture(autouse=True)
@@ -199,5 +199,98 @@ def test_release_lock_only_for_owner() -> None:
         lock = db.get(JobLock, ss._LOCK_NAME)
         assert lock.locked is False
         assert lock.owner is None
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Run-type-aware stale-lock recovery (a4 / a5)
+# ---------------------------------------------------------------------------
+
+
+def _make_stale_lock(lock_name: str) -> None:
+    too_old = utcnow() - ss._LOCK_HEARTBEAT_TTL - timedelta(minutes=1)
+    db = SessionLocal()
+    try:
+        lock = db.get(JobLock, lock_name) or JobLock(name=lock_name)
+        lock.locked = True
+        lock.owner = "dead"
+        lock.acquired_at = too_old
+        lock.heartbeat_at = too_old
+        db.add(lock)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_recover_stale_locks_only_finalizes_matching_run_type():
+    """Market recovery must not flip a jobs RunLog to error.
+
+    Creates a stale ``daily_refresh`` lock plus a healthy-looking jobs run
+    (run_type='jobs', phase='running').  After calling
+    ``refresh_lock.recover_stale_locks()`` (which passes run_type='market')
+    the market lock is released but the jobs run remains untouched.
+    """
+    _make_stale_lock(ss._LOCK_NAME)
+
+    db = SessionLocal()
+    try:
+        jobs_run = RunLog(run_type="jobs", phase="running", started_at=utcnow())
+        db.add(jobs_run)
+        db.commit()
+        jobs_run_id = jobs_run.id
+    finally:
+        db.close()
+
+    ss.recover_stale_locks()
+
+    db = SessionLocal()
+    try:
+        market_lock = db.get(JobLock, ss._LOCK_NAME)
+        assert market_lock is not None
+        assert market_lock.locked is False, "market lock should have been released"
+
+        recovered = db.get(RunLog, jobs_run_id)
+        assert recovered is not None
+        assert recovered.phase == "running", (
+            "jobs RunLog must NOT be finalised by market recovery"
+        )
+    finally:
+        db.close()
+
+
+def test_recover_stale_jobs_lock_resets_only_jobs_runs():
+    """Jobs recovery must not flip a market RunLog to error.
+
+    Creates a stale ``daily_jobs_refresh`` lock plus a stuck market run
+    (run_type=None, phase='running').  After calling
+    ``jobs_service.recover_stale_jobs_locks()`` only the jobs lock is
+    released; the market run stays in phase='running'.
+    """
+    _make_stale_lock(jobs_service._JOBS_LOCK_NAME)
+
+    db = SessionLocal()
+    try:
+        # Legacy market run with run_type=None (pre-0002 schema).
+        market_run = RunLog(phase="running", started_at=utcnow())
+        db.add(market_run)
+        db.commit()
+        market_run_id = market_run.id
+    finally:
+        db.close()
+
+    jobs_service.recover_stale_jobs_locks()
+
+    db = SessionLocal()
+    try:
+        jobs_lock = db.get(JobLock, jobs_service._JOBS_LOCK_NAME)
+        assert jobs_lock is not None
+        assert jobs_lock.locked is False, "jobs lock should have been released"
+
+        recovered = db.get(RunLog, market_run_id)
+        assert recovered is not None
+        assert recovered.phase == "running", (
+            "market RunLog must NOT be finalised by jobs recovery"
+        )
     finally:
         db.close()

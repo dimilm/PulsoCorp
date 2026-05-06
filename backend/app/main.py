@@ -7,23 +7,38 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import inspect, text
 
-from app.api.v1 import ai, auth, dashboard, export_csv, import_csv, jobs, run_logs, settings, stocks, tags
+from app.api.v1 import (
+    ai,
+    auth,
+    dashboard,
+    export_csv,
+    import_csv,
+    job_sources,
+    jobs,
+    jobs_runs,
+    run_logs,
+    settings,
+    stocks,
+    tags,
+)
 from app.core.config import settings as app_settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestIDMiddleware
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.core.security import hash_password
 from app.db.session import SessionLocal, engine
+from app.models.job_source import JobSnapshot, JobSource, RunJobStatus  # noqa: F401
 from app.models.settings import AppSettings
 from app.models.stock import Stock
 from app.models.user import User
 from app.services.refresh_worker import worker as refresh_worker
+from app.services.jobs_service import recover_stale_jobs_locks
 from app.services.scheduler_service import (
     recover_stale_locks,
     shutdown_scheduler,
     start_scheduler,
 )
-from app.services.seed_service import load_seed_json
+from app.services.seed_service import load_job_sources_seed_json, load_seed_json
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +116,25 @@ def init_db() -> None:
             logger.info("Seed import completed: imported=%s from %s", imported, app_settings.seed_json_path)
         else:
             logger.info("Seed import skipped: stocks already present (%s)", stocks_count)
+
+        # Job-source seed runs whenever the table is empty. The loader is
+        # idempotent (UPSERT on name+url) so re-importing after manual edits
+        # only updates existing rows.
+        job_sources_count = db.query(JobSource).count()
+        if job_sources_count == 0:
+            imported_jobs = load_job_sources_seed_json(
+                db, app_settings.job_sources_seed_json_path
+            )
+            logger.info(
+                "Job-source seed import completed: imported=%s from %s",
+                imported_jobs,
+                app_settings.job_sources_seed_json_path,
+            )
+        else:
+            logger.info(
+                "Job-source seed import skipped: rows already present (%s)",
+                job_sources_count,
+            )
     finally:
         db.close()
 
@@ -109,6 +143,7 @@ def init_db() -> None:
 async def lifespan(_: FastAPI):
     init_db()
     recover_stale_locks()
+    recover_stale_jobs_locks()
     refresh_worker.start()
     start_scheduler()
     try:
@@ -118,6 +153,18 @@ async def lifespan(_: FastAPI):
         # worker has been told to drain.
         shutdown_scheduler()
         refresh_worker.stop()
+        # Best-effort: close the headless Chromium if any Playwright-based
+        # scrape ran during this process lifetime. The import is local so
+        # we do not pay for it (or fail on it) when the extra is missing.
+        try:
+            from app.providers.jobs import PLAYWRIGHT_AVAILABLE
+
+            if PLAYWRIGHT_AVAILABLE:
+                from app.providers.jobs.playwright_pool import PlaywrightPool
+
+                await PlaywrightPool.shutdown()
+        except Exception as exc:  # pragma: no cover - shutdown path
+            logger.warning("Playwright pool shutdown failed: %s", exc)
 
 
 app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
@@ -138,6 +185,8 @@ app.include_router(auth.router, prefix=app_settings.api_v1_prefix)
 app.include_router(stocks.router, prefix=app_settings.api_v1_prefix)
 app.include_router(import_csv.router, prefix=app_settings.api_v1_prefix)
 app.include_router(jobs.router, prefix=app_settings.api_v1_prefix)
+app.include_router(jobs_runs.router, prefix=app_settings.api_v1_prefix)
+app.include_router(job_sources.router, prefix=app_settings.api_v1_prefix)
 app.include_router(run_logs.router, prefix=app_settings.api_v1_prefix)
 app.include_router(settings.router, prefix=app_settings.api_v1_prefix)
 app.include_router(ai.router, prefix=app_settings.api_v1_prefix)

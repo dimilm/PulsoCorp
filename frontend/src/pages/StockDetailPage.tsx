@@ -22,9 +22,14 @@ import { Spinner } from "../components/Spinner";
 const AIAgentsPanel = lazy(() =>
   import("../components/ai/AIAgentsPanel").then((m) => ({ default: m.AIAgentsPanel }))
 );
+// Same lazy-loading rationale as the AI panel: the jobs card pulls a
+// separate chart for every source, so it lives in its own chunk.
+const StockJobsCard = lazy(() =>
+  import("../components/jobs/StockJobsCard").then((m) => ({ default: m.StockJobsCard }))
+);
 import {
   RefreshKickoff,
-  STOCKS_QUERY_KEY,
+  STOCKS_LIST_KEY,
   useDeleteStock,
   useRefreshStock,
 } from "../hooks/useStockMutations";
@@ -117,7 +122,7 @@ function HistoryChart({ isin, stock }: HistoryChartProps) {
     setSearchParams(params, { replace: true });
   };
   const historyQuery = useStockHistory(isin, range);
-  const points = historyQuery.data?.points ?? [];
+  const points = useMemo(() => historyQuery.data?.points ?? [], [historyQuery.data?.points]);
   const chartTheme = useChartTheme();
 
   const chartData = useMemo(
@@ -133,9 +138,12 @@ function HistoryChart({ isin, stock }: HistoryChartProps) {
     [points]
   );
 
-  const numericRefLines: { value: number; label: string; color: string }[] = [];
-  if (stock.analyst_target_1y != null)
-    numericRefLines.push({ value: stock.analyst_target_1y, label: "Kursziel", color: "#059669" });
+  const numericRefLines = useMemo(() => {
+    const lines: { value: number; label: string; color: string }[] = [];
+    if (stock.analyst_target_1y != null)
+      lines.push({ value: stock.analyst_target_1y, label: "Kursziel", color: "#059669" });
+    return lines;
+  }, [stock.analyst_target_1y]);
 
   const yDomain = useMemo<[number | "auto", number | "auto"]>(() => {
     if (chartData.length === 0) return ["auto", "auto"];
@@ -382,7 +390,7 @@ function RefreshStatusCard({ isin, kickoff }: RefreshStatusCardProps) {
   useEffect(() => {
     if (!current || !isSingleRun) return;
     if (lastPhaseRef.current !== "finished" && current.phase === "finished") {
-      qc.invalidateQueries({ queryKey: STOCKS_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: STOCKS_LIST_KEY });
       qc.invalidateQueries({ queryKey: ["run-stocks", current.id] });
     }
     lastPhaseRef.current = current.phase;
@@ -553,11 +561,6 @@ export function StockDetailPage() {
           <div className="detail-hero-title-row">
             <h2>{stock.name}</h2>
             <span className="isin-pill" title="ISIN">{stock.isin}</span>
-            {stock.burggraben && (
-              <span className="badge detail-burggraben-badge" title="Burggraben">
-                Burggraben
-              </span>
-            )}
           </div>
           <div className="detail-hero-meta">
             {stock.sector && <span className="detail-sector">{stock.sector}</span>}
@@ -709,6 +712,10 @@ export function StockDetailPage() {
 
       <Suspense fallback={<Spinner label="Lade KI-Analysen…" />}>
         <AIAgentsPanel isin={isin} />
+      </Suspense>
+
+      <Suspense fallback={<Spinner label="Lade Jobdaten…" />}>
+        <StockJobsCard isin={isin} />
       </Suspense>
 
       <section className="detail-card">

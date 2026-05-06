@@ -13,7 +13,7 @@ beschriebenen Schema entspricht.
    - `1` = gemischtes Bild / unklare Datenlage
    - `0` = klares Nein / schwacher Punkt
 3. Begründe jede Bewertung in 1–3 Sätzen mit dem Bezug auf die übergebenen
-   Eingabedaten (z.B. Sektor, Burggraben, Kennzahlen, eigenes Reasoning).
+   Eingabedaten (z.B. Sektor, Tags, Kennzahlen, eigenes Reasoning).
 4. Berechne `total_score` als Summe aller `rating`-Werte (0–30).
 5. Setze `verdict`:
    - `strong` ab `total_score` 22

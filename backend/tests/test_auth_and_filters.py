@@ -22,7 +22,7 @@ def test_refresh_endpoint_works() -> None:
     assert "csrf_token" in body
 
 
-def test_stocks_filter_by_sector_and_burggraben() -> None:
+def test_stocks_filter_by_sector_and_moat_tag() -> None:
     client = TestClient(app)
     csrf = _login(client)
     headers = {"X-CSRF-Token": csrf}
@@ -34,11 +34,11 @@ def test_stocks_filter_by_sector_and_burggraben() -> None:
             "name": "Filter Test Stock",
             "sector": "Tech",
             "currency": "USD",
-            "burggraben": True,
             "tranches": 1,
+            "tags": ["moat"],
         },
     )
-    data = client.get("/api/v1/stocks", params={"sector": "Tech", "burggraben": True}).json()
+    data = client.get("/api/v1/stocks", params={"sector": "Tech", "tags": "moat"}).json()
     assert any(row["isin"] == "US0000000001" for row in data)
 
 
@@ -54,7 +54,6 @@ def test_create_stock_with_tags_and_filter_by_tag() -> None:
             "name": "Tag Test Stock",
             "sector": "Tech",
             "currency": "USD",
-            "burggraben": False,
             "tranches": 0,
             "tags": ["Growth", " growth ", "Dividend"],
         },
@@ -85,7 +84,6 @@ def test_delete_requires_admin() -> None:
             "name": "Delete Guard Stock",
             "sector": "Tech",
             "currency": "USD",
-            "burggraben": False,
             "tranches": 0,
         },
     )

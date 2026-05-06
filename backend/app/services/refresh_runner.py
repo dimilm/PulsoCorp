@@ -13,26 +13,21 @@ phase transitions) and call `MarketService` for the per-step IO.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
-import time
-from contextlib import asynccontextmanager
-from typing import AsyncIterator, Awaitable, Callable, TypeVar
+from typing import Callable
 
 from sqlalchemy.orm import Session
 
 from app.core.time import utcnow
 from app.db.session import SessionLocal
 from app.models.run_log import RunLog, RunStockStatus
-from app.models.settings import AppSettings
 from app.models.stock import MarketData, Stock
 from app.providers.market.yfinance_provider import YFinanceProvider
-from app.services import lock_manager
+from app.services import lock_manager, run_pipeline
 from app.services.market_service import MarketService
 from app.services.refresh_lock import (
-    RefreshCancelled,
     _LOCK_NAME,
-    clear_cancel,
+    RefreshCancelled,
     heartbeat,
     is_cancel_requested,
     process_owner,
@@ -55,9 +50,11 @@ from app.services.run_status_service import (
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
+# Single source of truth; re-exported for backward-compat (scheduler_service).
+_RETRY_DELAYS = run_pipeline._RETRY_DELAYS
 
-_RETRY_DELAYS = (0, 2, 4, 8)
+# Backward-compat alias used by tests via scheduler_service._retry.
+_retry = run_pipeline.retry_with_cancel
 
 
 # ---------------------------------------------------------------------------
@@ -80,9 +77,7 @@ def start_refresh_all_background(*, manual: bool = False) -> dict:
     """
     db = SessionLocal()
     try:
-        app_settings = db.get(AppSettings, 1) or AppSettings(id=1)
-        db.add(app_settings)
-        db.commit()
+        app_settings = run_pipeline.get_or_create_app_settings(db)
 
         if (
             not manual
@@ -216,104 +211,20 @@ def run_refresh_all_blocking() -> RunLog:
     """Cron entrypoint. Schedules the refresh on the worker and blocks until done.
 
     APScheduler runs jobs on its own thread, so blocking here is fine and does
-    not affect the FastAPI loop. The blocking is implemented by polling
-    `RunLog.phase`, with a 4h hard cap so a hung worker can never pin the
-    cron thread indefinitely.
+    not affect the FastAPI loop. Delegates the polling loop to
+    ``run_pipeline.wait_for_run_completion`` with a 4h hard cap so a hung
+    worker can never pin the cron thread indefinitely.
     """
-    import time as _time
-
     result = start_refresh_all_background()
     run_id = result.get("run_id")
     if not run_id:
         return RunLog(status="skipped")
-    deadline = _time.time() + 60 * 60 * 4
-    while _time.time() < deadline:
-        check = SessionLocal()
-        try:
-            row = check.get(RunLog, run_id)
-            if row is None or row.phase == "finished":
-                return row or RunLog(id=run_id, status="error")
-        finally:
-            check.close()
-        _time.sleep(2)
-    logger.warning("Refresh run %s exceeded the cron blocking deadline", run_id)
-    return RunLog(id=run_id, status="error")
+    return run_pipeline.wait_for_run_completion(run_id)
 
 
 # ---------------------------------------------------------------------------
 # Background execution
 # ---------------------------------------------------------------------------
-
-@asynccontextmanager
-async def _refresh_context(
-    run_id: int, owner: str
-) -> AsyncIterator[dict]:
-    """Async context manager that wraps the per-run lifecycle.
-
-    Both `_execute_refresh` and `_execute_single_refresh` need to:
-      1. Open a Session and flip `phase=running`.
-      2. Run the pipeline and collect errors / cancellation.
-      3. Finalize the RunLog (`phase=finished`, status, duration), release
-         the lock, close the session and clear the cancel flag — even
-         when the pipeline raises.
-
-    The context exposes a small mutable `state` dict so the `with` body
-    can flip `cancelled=True` and append to `errors` without juggling
-    `nonlocal` bindings. Keeping all the cleanup code here means the two
-    executors stay focused on their actual work.
-    """
-    db = SessionLocal()
-    started = time.perf_counter()
-    state: dict = {
-        "db": db,
-        "errors": [],
-        "cancelled": False,
-        "run_missing": False,
-    }
-    try:
-        run = db.get(RunLog, run_id)
-        if run is None:
-            logger.error("Refresh run %s vanished before execution", run_id)
-            state["run_missing"] = True
-            yield state
-            return
-        run.phase = "running"
-        db.add(run)
-        db.commit()
-
-        try:
-            yield state
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.exception("Refresh run %s crashed: %s", run_id, exc)
-            state["errors"].append(f"run-crash: {exc}")
-    finally:
-        if not state.get("run_missing"):
-            run = db.get(RunLog, run_id)
-            if run is not None:
-                run.phase = "finished"
-                run.finished_at = utcnow()
-                run.duration_seconds = int(time.perf_counter() - started)
-                if state["cancelled"]:
-                    mark_remaining_cancelled(db, run_id)
-                    run.status = "cancelled"
-                    cancel_note = "Abgebrochen durch Benutzer"
-                    run.error_details = (
-                        "\n".join([cancel_note, *state["errors"]])
-                        if state["errors"]
-                        else cancel_note
-                    )
-                else:
-                    run.status = "ok" if not state["errors"] else "partial_error"
-                    run.error_details = (
-                        "\n".join(state["errors"]) if state["errors"] else None
-                    )
-                db.add(run)
-            db.commit()
-            # Release after the run row is committed so observers polling
-            # the lock never see "unlocked + still running".
-            lock_manager.release_lock(db, _LOCK_NAME, owner)
-        db.close()
-        clear_cancel(run_id)
 
 
 async def _execute_refresh(
@@ -328,7 +239,11 @@ async def _execute_refresh(
     tests) can inject a stubbed provider; the default falls back to the
     module-level YFinance binding which existing monkeypatches still target.
     """
-    async with _refresh_context(run_id, owner) as state:
+    async with run_pipeline.run_context(
+        run_id, owner,
+        lock_name=_LOCK_NAME,
+        cancel_cleanup_fn=mark_remaining_cancelled,
+    ) as state:
         if state.get("run_missing"):
             return
         db: Session = state["db"]
@@ -382,7 +297,11 @@ async def _execute_single_refresh(
     Mirrors `_execute_refresh` but only touches one stock. AI evaluation is
     triggered separately via the agents panel on the detail page.
     """
-    async with _refresh_context(run_id, owner) as state:
+    async with run_pipeline.run_context(
+        run_id, owner,
+        lock_name=_LOCK_NAME,
+        cancel_cleanup_fn=mark_remaining_cancelled,
+    ) as state:
         if state.get("run_missing"):
             return
         db: Session = state["db"]
@@ -480,7 +399,9 @@ async def _process_market_steps(
 
     # Step 2: fetch the live quote (with retry).
     try:
-        quote = await _retry(lambda: market.fetch_quote(symbol), cancel_check=cancel_check)
+        quote = await run_pipeline.retry_with_cancel(
+            lambda: market.fetch_quote(symbol), cancel_check=cancel_check
+        )
         mark_step_done(row, "quote")
         mark_step_running(row, "metrics")
         db.add(row)
@@ -498,7 +419,7 @@ async def _process_market_steps(
 
     # Step 3: fetch the fundamentals (with retry) and persist the data.
     try:
-        metrics_data = await _retry(
+        metrics_data = await run_pipeline.retry_with_cancel(
             lambda: market.fetch_metrics(symbol), cancel_check=cancel_check
         )
         mark_step_done(row, "metrics")
@@ -554,29 +475,3 @@ def _flag_market_error(db: Session, isin: str, exc: Exception) -> None:
     db.commit()
 
 
-async def _retry(
-    fn: Callable[[], Awaitable[T]],
-    *,
-    cancel_check: Callable[[], bool] | None = None,
-) -> T:
-    last_exc: Exception | None = None
-    for delay in _RETRY_DELAYS:
-        if cancel_check and cancel_check():
-            raise RefreshCancelled()
-        if delay:
-            # Sleep in small slices so a cancel takes effect well before the
-            # full back-off (worst case 8s) elapses.
-            slept = 0.0
-            while slept < delay:
-                if cancel_check and cancel_check():
-                    raise RefreshCancelled()
-                step = min(0.5, delay - slept)
-                await asyncio.sleep(step)
-                slept += step
-        try:
-            return await fn()
-        except Exception as exc:
-            last_exc = exc
-    if last_exc is None:  # pragma: no cover - logically unreachable
-        raise RuntimeError("retry failed without capturing exception")
-    raise last_exc

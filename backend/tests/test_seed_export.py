@@ -14,7 +14,7 @@ def _login(client: TestClient, username: str = "admin", password: str = "changem
     return resp.json()["csrf_token"]
 
 
-def test_export_seed_json_round_trip_includes_tags_and_burggraben() -> None:
+def test_export_seed_json_round_trip_includes_tags() -> None:
     client = TestClient(app)
     csrf = _login(client)
     headers = {"X-CSRF-Token": csrf}
@@ -27,7 +27,6 @@ def test_export_seed_json_round_trip_includes_tags_and_burggraben() -> None:
             "name": "Seed Export Stock",
             "sector": "Tech",
             "currency": "USD",
-            "burggraben": True,
             "tranches": 3,
             "reasoning": "Strong moat & growth",
             "link_yahoo": "https://finance.yahoo.com/quote/SES/",
@@ -49,7 +48,6 @@ def test_export_seed_json_round_trip_includes_tags_and_burggraben() -> None:
     assert row["name"] == "Seed Export Stock"
     assert row["sector"] == "Tech"
     assert row["currency"] == "USD"
-    assert row["burggraben"] is True
     assert row["tranches"] == 3
     assert row["reasoning"] == "Strong moat & growth"
     assert row["link_yahoo"] == "https://finance.yahoo.com/quote/SES/"
@@ -63,7 +61,6 @@ def test_export_seed_json_round_trip_includes_tags_and_burggraben() -> None:
         "name",
         "sector",
         "currency",
-        "burggraben",
         "tranches",
         "reasoning",
         "link_yahoo",
@@ -95,7 +92,6 @@ def test_upsert_seed_row_imports_tags_from_seed_dict() -> None:
                 "name": "Reimport Stock",
                 "sector": "Tech",
                 "currency": "USD",
-                "burggraben": False,
                 "tranches": 1,
                 "reasoning": None,
                 "link_yahoo": None,
@@ -123,7 +119,6 @@ def test_upsert_seed_row_without_tags_key_still_works() -> None:
                 "name": "Legacy Seed Stock",
                 "sector": "Tech",
                 "currency": "USD",
-                "burggraben": False,
                 "tranches": 0,
                 "reasoning": None,
                 "link_yahoo": None,

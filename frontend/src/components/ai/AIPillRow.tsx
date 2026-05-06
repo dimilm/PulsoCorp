@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { parseBackendDate } from "../../lib/format";
 import type {
   AIAgentId,
   AILatestRun,
@@ -29,17 +30,11 @@ const RISK_LABEL: Record<RedFlagPillSummary["overall_risk"], string> = {
   high: "Hoch",
 };
 
-const VERDICT_LABEL: Record<FisherPillSummary["verdict"], string> = {
-  strong: "Stark",
-  neutral: "Neutral",
-  weak: "Schwach",
-};
-
 // Formats "vor 3 Tagen" / "vor 5 Stunden" / "vor 2 Min." / "gerade eben". Used
 // only for the tooltip — the pill itself stays compact, the timestamp lives
 // in the title attribute.
 function formatRelative(iso: string): string {
-  const ts = new Date(iso).getTime();
+  const ts = parseBackendDate(iso).getTime();
   if (Number.isNaN(ts)) return iso;
   const diffMs = Date.now() - ts;
   const minutes = Math.round(diffMs / 60_000);

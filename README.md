@@ -63,6 +63,13 @@ docker compose up --build
 - Backend docs (via frontend proxy): `http://localhost:8080/api/v1/docs`
 - Default login: `admin / changeme`
 
+> **Deploying over plain HTTP (no TLS in front)?** The auth + CSRF cookies are
+> issued with the `Secure` flag by default, so browsers silently drop them on a
+> non-HTTPS connection — login appears to succeed but every follow-up request
+> fails with `{"detail":"Missing auth cookie"}`. Set `COOKIE_SECURE=false` in
+> `docker/.env` (see `.env.example`) before `docker compose up` and switch it
+> back to `true` once HTTPS is in front of the deployment.
+
 > The SQLite database and the rotating backups live in the **`app_data` named
 > Docker volume**, not in the host `data/` folder. We don't bind-mount `data/`
 > on Docker Desktop / Windows because the gRPC-FUSE layer surfaces sub-paths
@@ -73,6 +80,86 @@ docker compose up --build
 > on every platform. Use `docker\restore-backups.ps1` (Windows) or
 > `docker/restore-backups.sh` (Linux/macOS) to copy the rotating backup files
 > out to the host whenever you need them — see *Backup Restore* below.
+
+> **Behind a corporate HTTP proxy?** Some Docker Desktop installs (especially
+> at companies with Zscaler / Netskope / similar) inject `HTTP_PROXY` and
+> `HTTPS_PROXY` into every container. Without an explicit `NO_PROXY`, both
+> healthchecks below route their loopback request (`http://localhost:8000/...`
+> for the backend, `http://localhost/healthz` for nginx) through that proxy
+> and fail with a `502 Could not resolve or connect to proxy or host` — even
+> though the app itself answers fine. The compose file exempts loopback by
+> default (`NO_PROXY=localhost,127.0.0.1,::1`); override via `NO_PROXY=...`
+> in `docker/.env` only if you need to widen the no-proxy list further (e.g.
+> for an internal package mirror).
+
+### 3. Optional: enable Playwright job adapters in Docker
+
+The default Docker image **does not** include Chromium so it stays slim
+(~500 MB savings, see [ADR 0002](docs/adr/0002-jobs-pipeline-integration.md)).
+If you have a `job_source` whose `adapter_type` is one of
+`playwright_api_fetch`, `playwright_css_count` or `playwright_text_regex`,
+the backend will refuse to refresh that source with:
+
+```
+adapter_type 'playwright_text_regex' requires the Playwright extra.
+Install it with `pip install -e .[playwright]` and run
+`python -m playwright install chromium` once.
+```
+
+To enable the Playwright adapters in Docker, set the build-time toggle in
+`docker/.env` and rebuild:
+
+```bash
+# docker/.env
+INSTALL_PLAYWRIGHT=1
+```
+
+```bash
+cd docker
+docker compose build backend
+docker compose up -d
+```
+
+The backend image now installs `pip install .[playwright]` and bakes
+Chromium plus its system libraries (`libnss3`, `libatk1.0-0`, …) into the
+image via `playwright install --with-deps chromium`. The browser cache is
+pinned to `/opt/playwright` (via `PLAYWRIGHT_BROWSERS_PATH`) so the
+unprivileged `app` user can read it after `gosu` drops privileges. Switching
+back to the slim image is a one-line change (`INSTALL_PLAYWRIGHT=0`) plus
+another `docker compose up --build`.
+
+**Behind a TLS-intercepting corporate proxy?** `playwright install`
+internally calls a Node-based downloader that ignores the system trust
+store and validates against its own bundled CA list, so the build aborts
+with:
+
+```
+Downloading Chrome for Testing ... from https://cdn.playwright.dev/...
+Error: unable to get local issuer certificate
+code: 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'
+```
+
+Two ways out, in order of preference:
+
+1. **Inject the corporate root CA (clean, recommended).** Drop your root CA
+   in PEM format into `docker/corp-ca.crt`, then add this once to
+   `docker/Dockerfile.backend` right before the `playwright install` line:
+   ```dockerfile
+   COPY docker/corp-ca.crt /usr/local/share/ca-certificates/corp-ca.crt
+   ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/corp-ca.crt
+   ```
+   Leave `PLAYWRIGHT_INSECURE_DOWNLOAD=0`. TLS verification stays on.
+2. **Skip TLS verification for the one-shot download (quick).** Set in
+   `docker/.env`:
+   ```
+   PLAYWRIGHT_INSECURE_DOWNLOAD=1
+   ```
+   The build then exports `NODE_TLS_REJECT_UNAUTHORIZED=0` only for the
+   single `playwright install` invocation. Chromium is then in the image
+   and runtime Playwright never contacts the CDN again, so the runtime app
+   keeps verifying TLS normally. Acceptable as a workaround when your
+   corporate proxy already MITMs all egress traffic anyway, but flag #1
+   is the principled fix.
 
 ## Run locally without Docker
 
@@ -290,6 +377,9 @@ A workflow that plays well with this codebase:
   Google Gemini / Ollama as interchangeable LLM providers
 - Encrypted API key storage in settings
 - Daily SQLite backup rotation (14 files)
+- Karriereportal-Scrape (offene Stellen pro Unternehmen, eigener Cron mit
+  paralleler Lock-Domäne, Trend-Charts auf der Stock-Detail-Seite und eine
+  dedizierte `/jobs`-Seite zur Quellen-Verwaltung)
 
 ### KI-Analysen (Agenten)
 
@@ -416,7 +506,7 @@ To run initial import again:
 ### Aktuellen DB-Stand als Seed exportieren
 
 Statt `stocks.seed.json` manuell zu pflegen, kann der aktuelle DB-Stand
-(inkl. `tags`, `burggraben`, `tranches`, `reasoning` und Links) als neuer
+(inkl. `tags`, `tranches`, `reasoning` und Links) als neuer
 Seed exportiert werden:
 
 - Im Frontend unter **Einstellungen → Seed exportieren** klicken (lädt
@@ -548,3 +638,77 @@ will require, at minimum:
 
 ADR `docs/adr/0001-single-process-backend.md` captures this trade-off in
 more detail.
+
+## Karriereportal-Scrape (Jobs)
+
+CompanyTracker scrapt täglich (Default 02:00 lokale Zeit) die in
+`job_sources` hinterlegten Karriereportale und speichert die Anzahl
+offener Stellen als `JobSnapshot` ab. Die Pipeline teilt sich Worker und
+Run-Tabelle mit dem Marktdaten-Refresh, läuft aber unter einem eigenen
+`run_type='jobs'` und einer eigenen Lock-Domäne (`daily_jobs_refresh`),
+sodass Markt- und Job-Lauf parallel laufen können.
+
+### Unterstützte Adapter
+
+Fünf Adapter laufen rein auf `httpx` und sind im Standard-Backend immer
+verfügbar:
+
+| Adapter                | Idee                                                                  |
+|------------------------|------------------------------------------------------------------------|
+| `static_html`          | GET HTML, BeautifulSoup-Selector zählt passende Elemente.              |
+| `json_get_path_int`    | GET JSON, integer am dotted path (`meta.totalHits`).                   |
+| `json_get_array_count` | GET JSON, Länge eines Arrays (`jobs` → `len(...)`).                    |
+| `json_post_path_int`   | POST JSON-Payload, integer am dotted path.                             |
+| `json_post_facet_sum`  | POST JSON-Payload, Counts in `facets.map.<facet_field>` summieren.     |
+
+Drei Adapter brauchen einen echten Browser und liegen hinter dem
+optionalen Extra `backend[playwright]`:
+
+| Adapter                  | Idee                                                                          |
+|--------------------------|--------------------------------------------------------------------------------|
+| `playwright_api_fetch`   | Portal in Chromium öffnen (Cookies/Cloudflare), API per `fetch()` aufrufen.    |
+| `playwright_css_count`   | Portal rendern, DOM-Elemente per CSS-Selector zählen.                          |
+| `playwright_text_regex`  | Portal rendern, Counter per Regex aus dem sichtbaren Text extrahieren.         |
+
+Aktivieren mit:
+
+```powershell
+cd backend
+pip install -e .[playwright]
+python -m playwright install chromium
+```
+
+Ohne Extra wird der Adapter sauber abgewiesen: das Backend startet
+weiterhin, die JSON-/HTML-Adapter scrapen normal weiter, und ein
+manueller Test einer Playwright-Quelle liefert eine klare
+`pip install -e .[playwright]`-Hinweismeldung. Details siehe
+[ADR 0002](docs/adr/0002-jobs-pipeline-integration.md).
+
+### Quellen verwalten
+
+Im Frontend unter **Jobs** (Navigation oben) lassen sich Quellen
+anlegen, bearbeiten und einzeln scrapen. Auf der Detailseite einer
+Aktie zeigt der Abschnitt **Offene Stellen** die aggregierten Counts
+plus 7-/30-Tage-Delta und einen Mini-Trend pro verknüpfter Quelle.
+
+### Importer für die Legacy-Daten aus `11_JobCounter`
+
+Der ursprüngliche Stand-alone-Scraper liegt nicht mehr im Repo. Falls
+noch ein Daten-Snapshot vorhanden ist:
+
+```powershell
+# 1. YAML-Konfigs in das Seed-File konvertieren (idempotent, schreibt
+#    backend/app/seed/job_sources.seed.json):
+cd backend
+python scripts/import_job_counter_yaml.py `
+    --source ../path/to/11_JobCounter/01_JobCounter/config
+
+# 2. Optional: Tagessnapshots aus dem alten Storage in job_snapshots
+#    nachladen (idempotent durch UNIQUE(source, date)):
+python scripts/import_job_counter_history.py `
+    --snapshots ../path/to/11_JobCounter/01_JobCounter/data/snapshots
+```
+
+Beim ersten Start nach dem Migrate-Schritt wird `job_sources.seed.json`
+automatisch geladen, solange `job_sources` leer ist (analog zur
+Stocks-Seed).

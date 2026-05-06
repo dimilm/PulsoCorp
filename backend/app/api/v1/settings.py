@@ -32,6 +32,9 @@ def _to_out(row: AppSettings) -> SettingsOut:
         ai_model=row.ai_model,
         ai_refresh_interval=row.ai_refresh_interval,
         ai_api_key_set=bool(row.ai_api_key_encrypted),
+        jobs_enabled=row.jobs_enabled,
+        jobs_update_hour=row.jobs_update_hour,
+        jobs_update_minute=row.jobs_update_minute,
     )
 
 
@@ -44,7 +47,18 @@ def get_settings(_: dict = Depends(get_current_user), db: Session = Depends(get_
 def put_settings(payload: SettingsUpdate, _: dict = Depends(require_admin), db: Session = Depends(get_db)) -> SettingsOut:
     row = _get_or_create_settings(db)
     data = payload.model_dump(exclude_unset=True)
-    for key in ["update_hour", "update_minute", "update_weekends", "ai_provider", "ai_endpoint", "ai_model", "ai_refresh_interval"]:
+    for key in [
+        "update_hour",
+        "update_minute",
+        "update_weekends",
+        "ai_provider",
+        "ai_endpoint",
+        "ai_model",
+        "ai_refresh_interval",
+        "jobs_enabled",
+        "jobs_update_hour",
+        "jobs_update_minute",
+    ]:
         if key in data:
             setattr(row, key, data[key])
     if "ai_api_key" in data and data["ai_api_key"]:

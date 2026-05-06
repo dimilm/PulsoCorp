@@ -17,6 +17,7 @@ from app.db.base import Base
 
 # Import side-effect: makes sure every model is registered on Base.metadata.
 import app.models.ai_run  # noqa: F401
+import app.models.job_source  # noqa: F401
 import app.models.run_log  # noqa: F401
 import app.models.settings  # noqa: F401
 import app.models.stock  # noqa: F401

@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../api/client";
 import type { HistoryRange, HistoryResponse, Stock } from "../types";
-import { STOCKS_QUERY_KEY } from "./useStockMutations";
+import { STOCKS_QUERY_KEY, STOCKS_LIST_KEY } from "./useStockMutations";
 
 export const STOCK_DETAIL_KEY = (isin: string) => [...STOCKS_QUERY_KEY, "detail", isin] as const;
 export const STOCK_HISTORY_KEY = (isin: string, range: HistoryRange) =>
@@ -24,18 +24,12 @@ export function useStock(isin: string | undefined) {
       // Pull a possibly cached row from the watchlist list query so the page
       // can render instantly while the detail request is in flight.
       //
-      // `getQueriesData` matches every key starting with `["stocks"]`, which
-      // also includes the *detail* (`Stock`) and *history* (`HistoryResponse`)
-      // caches. Those are plain objects without a `.find` method – calling
-      // `data.find(...)` on them used to throw `TypeError` during render and
-      // crashed the whole tree (= blank detail page on every navigation that
-      // hit the cache). Only iterate genuine list-style entries.
-      const cached = queryClient.getQueriesData<unknown>({ queryKey: STOCKS_QUERY_KEY });
-      for (const [key, data] of cached) {
+      // STOCKS_LIST_KEY is narrower than STOCKS_QUERY_KEY: it only matches the
+      // paginated/filtered list caches (never detail, history, or peers), so
+      // we don't need the Array.isArray guard any more.
+      const cached = queryClient.getQueriesData<Stock[]>({ queryKey: STOCKS_LIST_KEY });
+      for (const [, data] of cached) {
         if (!Array.isArray(data)) continue;
-        // Skip the `peers` array (key shape: ["stocks", "peers", isin]) – it
-        // does not represent the user's watchlist row.
-        if (key.length >= 2 && key[1] === "peers") continue;
         const hit = (data as Stock[]).find((s) => s?.isin === isin);
         if (hit) return hit;
       }

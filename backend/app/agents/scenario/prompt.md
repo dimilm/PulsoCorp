@@ -28,7 +28,8 @@ unten beschriebenen Schema.
 
 JSON mit `name`, `sector`, `currency`, `current_price`, `metrics` (Forward-
 KGV, 5-Jahres-KGV-Spanne, Revenue Growth, Eigenkapitalquote,
-Verschuldungsquote, Marktkapitalisierung), `burggraben`, `reasoning`.
+Verschuldungsquote, Marktkapitalisierung), `tags` (Liste von
+Klassifizierungs-Tags wie z. B. `moat`), `reasoning`.
 
 ## Antwortformat (Pflicht)
 

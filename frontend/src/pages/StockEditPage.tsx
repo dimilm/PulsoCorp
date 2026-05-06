@@ -6,7 +6,7 @@ import { api } from "../api/client";
 import { Spinner } from "../components/Spinner";
 import { TagInput } from "../components/TagInput";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { STOCKS_QUERY_KEY, useDeleteStock } from "../hooks/useStockMutations";
+import { STOCKS_LIST_KEY, useDeleteStock } from "../hooks/useStockMutations";
 import { useStock } from "../hooks/useStockQueries";
 import { extractApiError } from "../lib/apiError";
 import { confirm } from "../lib/dialogs";
@@ -21,7 +21,6 @@ interface FormState {
   name: string;
   sector: string;
   currency: string;
-  burggraben: boolean;
   tranches: string;
   ticker_override: string;
   tags: string[];
@@ -37,7 +36,6 @@ function fromStock(stock: Stock): FormState {
     name: stock.name ?? "",
     sector: stock.sector ?? "",
     currency: stock.currency ?? "EUR",
-    burggraben: Boolean(stock.burggraben),
     tranches: stock.tranches != null ? String(stock.tranches) : "0",
     ticker_override: stock.ticker_override ?? "",
     tags: Array.isArray(stock.tags) ? [...stock.tags] : [],
@@ -63,7 +61,7 @@ function parseInteger(value: string): number | null {
 
 /** Project the wider local FormState onto the subset that the edit-schema
  *  validates. Avoids accidentally validating fields that have no rules
- *  (sector, burggraben, tags, reasoning). */
+ *  (sector, tags, reasoning). */
 function toEditShape(state: FormState): EditStockFormShape {
   return {
     name: state.name,
@@ -104,6 +102,7 @@ export function StockEditPage() {
 
   useEffect(() => {
     if (stock && !form) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm(fromStock(stock));
     }
   }, [stock, form]);
@@ -169,7 +168,6 @@ export function StockEditPage() {
         name: form.name.trim(),
         sector: emptyOrNull(form.sector),
         currency: emptyOrNull(form.currency.toUpperCase()),
-        burggraben: form.burggraben,
         tranches: Math.max(0, parseInteger(form.tranches) ?? 0),
         ticker_override: emptyOrNull(form.ticker_override),
         tags: form.tags,
@@ -182,7 +180,7 @@ export function StockEditPage() {
       const res = await api.patch(`/stocks/${isin}`, payload);
       const updated = res.data as Stock;
       queryClient.setQueryData(["stocks", "detail", isin], updated);
-      await queryClient.invalidateQueries({ queryKey: STOCKS_QUERY_KEY });
+      await queryClient.invalidateQueries({ queryKey: STOCKS_LIST_KEY });
       await queryClient.invalidateQueries({ queryKey: ["tags"] });
       setForm(fromStock(updated));
       setSavedAt(new Date().toLocaleTimeString("de-DE"));
@@ -361,23 +359,6 @@ export function StockEditPage() {
                 </div>
               )}
             </div>
-            <label className="toggle-row" htmlFor="edit-burggraben">
-              <input
-                id="edit-burggraben"
-                type="checkbox"
-                checked={form.burggraben}
-                onChange={(e) => set("burggraben", e.target.checked)}
-              />
-              <span className="toggle-switch" aria-hidden="true">
-                <span className="toggle-knob" />
-              </span>
-              <span className="toggle-text">
-                <span className="toggle-title">Burggraben</span>
-                <span className="toggle-help">
-                  Unternehmen besitzt einen nachhaltigen Wettbewerbsvorteil
-                </span>
-              </span>
-            </label>
             <div className="field">
               <label htmlFor="edit-tags">Tags</label>
               <TagInput

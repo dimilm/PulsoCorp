@@ -7,6 +7,25 @@
 # ----------------------------------------------------------------------------
 FROM python:3.12-slim AS builder
 
+# Build-time toggle for the playwright_* job adapters. Set INSTALL_PLAYWRIGHT=1
+# (e.g. via docker/.env -> compose `build.args`) to pull in the optional
+# `playwright` extra here and download Chromium + its system libs in the
+# runtime stage. Off by default to keep the image lean (~500 MB Chromium
+# savings) -- see ADR 0002.
+ARG INSTALL_PLAYWRIGHT=0
+
+# Corporate-proxy escape hatch. `playwright install` shells out to a Node-based
+# downloader that ignores the system trust store and validates against its own
+# bundled CA list. In TLS-intercepting environments (Zscaler, Netskope, ...)
+# that triggers `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` and the build aborts. Set
+# this to 1 (only when INSTALL_PLAYWRIGHT=1) to skip TLS verification for the
+# one-shot Chromium download from cdn.playwright.dev. Runtime Playwright is
+# unaffected -- the browser ships in the image, no further calls to the CDN.
+# Cleaner alternative: mount your corporate root CA at build time and export
+# NODE_EXTRA_CA_CERTS instead; see README -> "Optional: enable Playwright job
+# adapters in Docker".
+ARG PLAYWRIGHT_INSECURE_DOWNLOAD=0
+
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONDONTWRITEBYTECODE=1
@@ -20,7 +39,11 @@ COPY backend/pyproject.toml ./pyproject.toml
 
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
-    && /opt/venv/bin/pip install .
+    && if [ "$INSTALL_PLAYWRIGHT" = "1" ]; then \
+         /opt/venv/bin/pip install ".[playwright]"; \
+       else \
+         /opt/venv/bin/pip install .; \
+       fi
 
 
 # ----------------------------------------------------------------------------
@@ -30,23 +53,50 @@ RUN python -m venv /opt/venv \
 # ----------------------------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
+ARG INSTALL_PLAYWRIGHT=0
+# Re-declared in this stage because ARGs do not cross stage boundaries.
+ARG PLAYWRIGHT_INSECURE_DOWNLOAD=0
+
+# PLAYWRIGHT_BROWSERS_PATH pins the Chromium cache to a fixed path so root
+# (during install below) and the unprivileged `app` user (at runtime) resolve
+# to the same location. The default ~/.cache/ms-playwright would land under
+# /root/.cache and be unreadable to `app`.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
-    SEED_JSON_PATH=app/seed/stocks.seed.json
+    SEED_JSON_PATH=app/seed/stocks.seed.json \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
-# `gosu` is used by the entrypoint to drop privileges from root → app after
+# Bring the venv in first because the conditional Chromium install below
+# shells out to the playwright CLI from inside it.
+COPY --from=builder /opt/venv /opt/venv
+
+# `gosu` is used by the entrypoint to drop privileges from root -> app after
 # the bind-mounted /data directory has been chowned. We need root very briefly
 # at startup because Docker Desktop / WSL2 surfaces host bind-mounts as
 # nobody:nobody, which the unprivileged `app` user cannot write to.
+#
+# When INSTALL_PLAYWRIGHT=1 we additionally install Chromium plus the system
+# libraries it links against (libnss3, libatk1.0-0, ...) via
+# `playwright install --with-deps chromium`. That command shells out to apt
+# itself, so the apt cache must still be populated when it runs -- hence the
+# combined RUN that defers `rm -rf /var/lib/apt/lists/*` until the very end.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gosu \
-    && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 1001 app \
-    && useradd --system --uid 1001 --gid app --home /app --shell /usr/sbin/nologin app
+    && useradd --system --uid 1001 --gid app --home /app --shell /usr/sbin/nologin app \
+    && if [ "$INSTALL_PLAYWRIGHT" = "1" ]; then \
+         if [ "$PLAYWRIGHT_INSECURE_DOWNLOAD" = "1" ]; then \
+           NODE_TLS_REJECT_UNAUTHORIZED=0 \
+             /opt/venv/bin/python -m playwright install --with-deps chromium; \
+         else \
+           /opt/venv/bin/python -m playwright install --with-deps chromium; \
+         fi \
+         && chmod -R a+rX /opt/playwright; \
+       fi \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=builder /opt/venv /opt/venv
 COPY backend/app /app/app
 COPY backend/migrations /app/migrations
 COPY backend/alembic.ini /app/alembic.ini

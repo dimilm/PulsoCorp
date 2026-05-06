@@ -16,7 +16,6 @@ def get_dashboard(_: dict = Depends(get_current_user), db: Session = Depends(get
     losers = sorted_by_change[:5]
     winners = list(reversed(sorted_by_change[-5:]))
     invested = sum(s["invested_capital_eur"] for s in stocks)
-    moat_invested = sum(s["invested_capital_eur"] for s in stocks if s["burggraben"])
     portfolio_day_change_eur = sum(
         (s["invested_capital_eur"] * (s["day_change_pct"] or 0) / 100) for s in stocks if s["day_change_pct"] is not None
     )
@@ -29,7 +28,6 @@ def get_dashboard(_: dict = Depends(get_current_user), db: Session = Depends(get
         "portfolio_value_eur": portfolio_value_eur,
         "portfolio_day_change_eur": portfolio_day_change_eur,
         "portfolio_day_change_pct": portfolio_day_change_pct,
-        "moat_share_pct": (moat_invested / invested * 100) if invested else 0,
         "winners": winners,
         "losers": losers,
         "last_run": {

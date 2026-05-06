@@ -39,7 +39,6 @@ class StockBase(BaseModel):
     name: str
     sector: str | None = None
     currency: str | None = None
-    burggraben: bool = False
     reasoning: str | None = None
     ticker_override: str | None = None
     link_yahoo: str | None = None
@@ -63,7 +62,6 @@ class StockUpdate(BaseModel):
     name: str | None = None
     sector: str | None = None
     currency: str | None = None
-    burggraben: bool | None = None
     reasoning: str | None = None
     ticker_override: str | None = None
     link_yahoo: str | None = None

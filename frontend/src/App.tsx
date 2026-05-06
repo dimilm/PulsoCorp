@@ -32,6 +32,12 @@ const StockEditPage = lazy(() =>
 const WatchlistPage = lazy(() =>
   import("./pages/WatchlistPage").then((m) => ({ default: m.WatchlistPage }))
 );
+const JobsPage = lazy(() =>
+  import("./pages/JobsPage").then((m) => ({ default: m.JobsPage }))
+);
+const JobSourceFormPage = lazy(() =>
+  import("./pages/JobSourceFormPage").then((m) => ({ default: m.JobSourceFormPage }))
+);
 
 function PageFallback() {
   return (
@@ -84,6 +90,30 @@ export default function App() {
             element={
               <Protected>
                 <StockEditPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/jobs"
+            element={
+              <Protected>
+                <JobsPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/jobs/new"
+            element={
+              <Protected>
+                <JobSourceFormPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/jobs/:id"
+            element={
+              <Protected>
+                <JobSourceFormPage />
               </Protected>
             }
           />

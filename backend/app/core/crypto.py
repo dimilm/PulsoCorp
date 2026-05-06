@@ -1,7 +1,10 @@
 import base64
 import hashlib
+import logging
 
 from cryptography.fernet import Fernet, InvalidToken
+
+logger = logging.getLogger(__name__)
 
 
 def _to_fernet_key(raw_key: str) -> bytes:
@@ -23,4 +26,9 @@ class SecretCrypto:
         try:
             return self._fernet.decrypt(value.encode("utf-8")).decode("utf-8")
         except InvalidToken:
+            logger.warning(
+                "Decryption failed (InvalidToken) — likely caused by an "
+                "ENCRYPTION_KEY rotation. The stored secret is no longer "
+                "readable and must be re-entered via the Settings page."
+            )
             return ""

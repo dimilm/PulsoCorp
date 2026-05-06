@@ -15,13 +15,13 @@ interface State {
 // Prevents a single crashing component from blanking the whole app and gives
 // the user a way to recover (reset the boundary, reload the page).
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  override state: State = { error: null };
 
   static getDerivedStateFromError(error: Error): State {
     return { error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo): void {
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
     // Surface the error in the dev console; production deployments can
     // forward to a logging endpoint here later.
     console.error("[ErrorBoundary]", error, info);
@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ error: null });
   };
 
-  render() {
+  override render() {
     if (this.state.error) {
       if (this.props.fallback) {
         return this.props.fallback(this.state.error, this.reset);

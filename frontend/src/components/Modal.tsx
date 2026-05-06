@@ -60,6 +60,7 @@ function ModalShell({ onClose, title, subtitle, footer, closeOnBackdrop, childre
   useFocusTrap(cardRef, true);
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       className="modal-backdrop"
       onMouseDown={(e) => {

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Table, Text
+from sqlalchemy import Column, Date, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import utcnow
@@ -30,7 +30,6 @@ class Stock(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     sector: Mapped[str | None] = mapped_column(String(128), nullable=True)
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
-    burggraben: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     ticker_override: Mapped[str | None] = mapped_column(String(24), nullable=True)
     link_yahoo: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -67,14 +66,13 @@ class Stock(Base):
 
 
 Index("ix_stocks_sector", Stock.sector)
-Index("ix_stocks_burggraben", Stock.burggraben)
 Index("ix_stocks_name", Stock.name)
 
 
 class MarketData(Base):
     __tablename__ = "market_data"
 
-    isin: Mapped[str] = mapped_column(String(12), ForeignKey("stocks.isin"), primary_key=True)
+    isin: Mapped[str] = mapped_column(String(12), ForeignKey("stocks.isin", ondelete="CASCADE"), primary_key=True)
     current_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     day_change_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_updated: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -91,7 +89,7 @@ Index("ix_market_data_last_updated", MarketData.last_updated)
 class Metrics(Base):
     __tablename__ = "metrics"
 
-    isin: Mapped[str] = mapped_column(String(12), ForeignKey("stocks.isin"), primary_key=True)
+    isin: Mapped[str] = mapped_column(String(12), ForeignKey("stocks.isin", ondelete="CASCADE"), primary_key=True)
     pe_forward: Mapped[float | None] = mapped_column(Float, nullable=True)
     pe_min_5y: Mapped[float | None] = mapped_column(Float, nullable=True)
     pe_max_5y: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -110,7 +108,7 @@ class Metrics(Base):
 class Position(Base):
     __tablename__ = "positions"
 
-    isin: Mapped[str] = mapped_column(String(12), ForeignKey("stocks.isin"), primary_key=True)
+    isin: Mapped[str] = mapped_column(String(12), ForeignKey("stocks.isin", ondelete="CASCADE"), primary_key=True)
     tranches: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     stock = relationship("Stock", back_populates="position")

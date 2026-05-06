@@ -1,0 +1,317 @@
+/* Base: reset, global elements, nav, page layout, breadcrumb, empty-state,
+ * error-boundary, spinner/loading */
+
+* {
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+
+nav {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-nav);
+  color: var(--c-white);
+}
+
+nav a,
+nav .nav-link {
+  color: var(--c-slate-300);
+  text-decoration: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 14px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  position: relative;
+}
+
+nav a:hover,
+nav .nav-link:hover {
+  color: var(--c-white);
+  background: var(--c-gray-800);
+}
+
+nav .nav-link.active {
+  color: var(--c-white);
+  background: var(--accent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+nav .nav-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--c-gray-700);
+  margin: 0 6px;
+  flex: 0 0 auto;
+}
+
+nav .nav-run-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--c-white);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+nav .nav-link.active .nav-run-indicator {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+nav .nav-run-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c-amber-400, #fbbf24);
+  animation: run-pulse 1s ease-in-out infinite;
+  flex: 0 0 auto;
+}
+
+nav .nav-user {
+  margin-left: auto;
+  color: var(--c-gray-400);
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+nav .nav-theme-toggle {
+  background: transparent;
+  border: 1px solid var(--c-gray-700);
+  color: var(--c-slate-300);
+  width: 34px;
+  height: 32px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+nav .nav-theme-toggle:hover {
+  background: var(--c-gray-800);
+  border-color: var(--c-gray-600);
+  color: var(--c-white);
+}
+
+nav .nav-logout {
+  background: transparent;
+  border: 1px solid var(--c-gray-700);
+  color: var(--c-slate-300);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+nav .nav-logout:hover {
+  background: var(--c-red-700);
+  border-color: var(--c-red-700);
+  color: var(--c-white);
+}
+
+.page {
+  padding: 16px;
+}
+
+.narrow {
+  max-width: 360px;
+}
+
+/* ------- Page header ------- */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.page-header-title h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.muted-count {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 15px;
+}
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ------- Spinner / loading state ------- */
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 16px;
+  color: #374151;
+  font-size: 14px;
+}
+
+.loading-label {
+  font-weight: 500;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ------- Breadcrumbs ------- */
+
+.breadcrumb-link {
+  color: var(--text-link);
+  text-decoration: none;
+}
+
+.breadcrumb-link:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: var(--text-muted);
+}
+
+.breadcrumb-current {
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+/* ---------- Generic Empty-State primitive ----------------------------- */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+}
+
+.empty-state-card {
+  padding: 36px 24px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg-surface-2);
+  color: var(--text-secondary);
+}
+
+.empty-state-inline {
+  padding: 16px;
+  color: var(--text-secondary);
+}
+
+.empty-state-icon {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft-bg);
+  border-radius: 50%;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.empty-state-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.empty-state-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 36rem;
+  line-height: 1.5;
+}
+
+.empty-state-action {
+  margin-top: 6px;
+  display: inline-flex;
+  gap: 8px;
+}
+
+/* ---------- Error boundary -------------------------------------------- */
+
+.error-boundary-page {
+  max-width: 720px;
+  margin: 32px auto;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: 12px;
+  padding: 24px;
+  color: #7f1d1d;
+}
+
+.error-boundary-page h2 {
+  margin: 0 0 8px;
+  color: var(--danger-strong);
+}
+
+.error-boundary-page p {
+  margin: 0 0 12px;
+  color: var(--text-strong);
+  line-height: 1.55;
+}
+
+.error-boundary-stack {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-strong);
+}
+
+.error-boundary-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

@@ -1,0 +1,455 @@
+[
+  {
+    "name": "Ferrari",
+    "portal_url": "https://jobs.ferrari.com",
+    "adapter_type": "json_post_facet_sum",
+    "adapter_settings": {
+      "endpoint": "https://jobs.ferrari.com/services/jobs/options/facetValues/",
+      "facet_field": "country",
+      "payload": {
+        "page": 0,
+        "keywords": "",
+        "locationsearch": "",
+        "sortby": "referencedate",
+        "sortdir": "desc",
+        "sortfield": "title",
+        "recordsperpage": 25,
+        "startrow": 0,
+        "facetquery": {
+          "facet": true,
+          "mincount": 1,
+          "limit": 5000,
+          "fields": [
+            "country",
+            "customfield1"
+          ],
+          "sort": "index",
+          "showPicklistAllLocales": false
+        },
+        "filterquery": {}
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "timeout_seconds": 20
+    },
+    "is_active": true,
+    "isin": "NL0011585146"
+  },
+  {
+    "name": "Mercedes",
+    "portal_url": "https://widget-server.zukunftmitstern.de/jobs?jobType=expert&radius=20&excludeProactive=false&app-source=live",
+    "adapter_type": "json_get_array_count",
+    "adapter_settings": {
+      "endpoint": "https://widget-server.zukunftmitstern.de/jobs",
+      "params": {
+        "jobType": "expert",
+        "radius": 20,
+        "excludeProactive": false,
+        "app-source": "live"
+      },
+      "array_field": "jobs",
+      "timeout_seconds": 20
+    },
+    "is_active": true,
+    "isin": "DE0007100000"
+  },
+  {
+    "name": "Volkswagen Group",
+    "portal_url": "https://jobs.volkswagen-group.com",
+    "adapter_type": "json_post_facet_sum",
+    "adapter_settings": {
+      "endpoint": "https://jobs.volkswagen-group.com/services/jobs/options/facetValues/",
+      "facet_field": "shifttype",
+      "payload": {
+        "page": 0,
+        "keywords": "",
+        "locationsearch": "",
+        "sortby": "referencedate",
+        "sortdir": "desc",
+        "sortfield": "title",
+        "recordsperpage": 25,
+        "startrow": 0,
+        "facetquery": {
+          "facet": true,
+          "mincount": 1,
+          "limit": 5000,
+          "fields": [
+            "city",
+            "facility",
+            "department",
+            "customfield2",
+            "shifttype",
+            "customfield3"
+          ],
+          "sort": "index",
+          "showPicklistAllLocales": false
+        },
+        "filterquery": {}
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "timeout_seconds": 20
+    },
+    "is_active": true,
+    "isin": "DE0007664039"
+  },
+  {
+    "name": "Nike",
+    "portal_url": "https://careers.nike.com/de/jobs",
+    "adapter_type": "playwright_api_fetch",
+    "adapter_settings": {
+      "endpoint": "https://careers.nike.com/api/get-jobs?radius=25&filter%5Bemployment_type%5D%5B0%5D=FULL_TIME&enable_kilometers=true",
+      "value_path": "totalJob",
+      "payload": {
+        "disable_switch_search_mode": false,
+        "site_available_languages": [
+          "de",
+          "en"
+        ]
+      },
+      "timeout_ms": 30000
+    },
+    "is_active": true,
+    "isin": "US6541061031"
+  },
+  {
+    "name": "PayPal",
+    "portal_url": "https://careers.paypal.com",
+    "adapter_type": "json_get_path_int",
+    "adapter_settings": {
+      "endpoint": "https://paypal.eightfold.ai/api/pcsx/search",
+      "params": {
+        "domain": "paypal.com",
+        "query": "",
+        "location": "",
+        "start": "0",
+        "sort_by": "timestamp"
+      },
+      "value_path": "data.count",
+      "timeout_seconds": 30
+    },
+    "is_active": true,
+    "isin": "US70450Y1038"
+  },
+  {
+    "name": "Deutsche Bank",
+    "portal_url": "https://api-deutschebank.beesite.de",
+    "adapter_type": "json_get_path_int",
+    "adapter_settings": {
+      "endpoint": "https://api-deutschebank.beesite.de/search/",
+      "params": {
+        "data": "{\"LanguageCode\":\"de\",\"SearchParameters\":{\"FirstItem\":1,\"CountItem\":10,\"MatchedObjectDescriptor\":[\"Facet:ProfessionCategory\",\"Facet:UserArea.ProDivision\",\"Facet:Profession\",\"Facet:PositionLocation.CountrySubDivision\",\"Facet:PositionOfferingType.Code\",\"Facet:PositionSchedule.Code\",\"Facet:PositionLocation.City\",\"Facet:PositionLocation.Country\",\"Facet:JobCategory.Code\",\"Facet:CareerLevel.Code\",\"Facet:PositionHiringYear\",\"Facet:PositionFormattedDescription.Content\",\"PositionID\",\"PositionTitle\",\"PositionURI\",\"ScoreThreshold\",\"OrganizationName\",\"PositionFormattedDescription.Content\",\"PositionLocation.CountryName\",\"PositionLocation.CountrySubDivisionName\",\"PositionLocation.CityName\",\"PositionLocation.Longitude\",\"PositionLocation.Latitude\",\"PositionIndustry.Name\",\"JobCategory.Name\",\"CareerLevel.Name\",\"PositionSchedule.Name\",\"PositionOfferingType.Name\",\"PublicationStartDate\",\"UserArea.GradEduInstCountry\",\"PositionImport\",\"PositionHiringYear\",\"PositionID\"],\"Sort\":[{\"Criterion\":\"PublicationStartDate\",\"Direction\":\"DESC\"}]},\"SearchCriteria\":[null]}"
+      },
+      "value_path": "SearchResult.SearchResultCountAll",
+      "timeout_seconds": 20
+    },
+    "is_active": true,
+    "isin": "DE0005140008"
+  },
+  {
+    "name": "Pfizer",
+    "portal_url": "https://www.pfizer.com/about/careers",
+    "adapter_type": "json_post_path_int",
+    "adapter_settings": {
+      "endpoint": "https://pfizer.wd1.myworkdayjobs.com/wday/cxs/pfizer/PfizerCareers/jobs",
+      "payload": {
+        "appliedFacets": {},
+        "limit": 20,
+        "offset": 0,
+        "searchText": ""
+      },
+      "value_path": "total",
+      "timeout_seconds": 30,
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      }
+    },
+    "is_active": true,
+    "isin": "US7170811035"
+  },
+  {
+    "name": "UnitedHealth Group",
+    "portal_url": "https://careers.unitedhealthgroup.com/search-jobs",
+    "adapter_type": "playwright_text_regex",
+    "adapter_settings": {
+      "wait_for_selector": "h1",
+      "regex_pattern": "(\\d[\\d,]*)\\s*results",
+      "timeout_ms": 45000
+    },
+    "is_active": true,
+    "isin": "US91324P1021"
+  },
+  {
+    "name": "Boeing",
+    "portal_url": "https://jobs.boeing.com/search-jobs",
+    "adapter_type": "playwright_text_regex",
+    "adapter_settings": {
+      "wait_for_selector": "h2",
+      "regex_pattern": "(\\d[\\d,]*)\\s*results?\\s*found",
+      "timeout_ms": 45000
+    },
+    "is_active": true,
+    "isin": "US0970231058"
+  },
+  {
+    "name": "Kraft Heinz",
+    "portal_url": "https://jobs.kraftheinz.com",
+    "adapter_type": "json_get_path_int",
+    "adapter_settings": {
+      "endpoint": "https://jobs.kraftheinz.com/api/pcsx/search",
+      "params": {
+        "domain": "kraftheinz.com",
+        "query": "",
+        "location": "",
+        "start": "0"
+      },
+      "value_path": "data.count",
+      "timeout_seconds": 30
+    },
+    "is_active": true,
+    "isin": "US5007541064"
+  },
+  {
+    "name": "Philips",
+    "portal_url": "https://www.careers.philips.com/professional",
+    "adapter_type": "json_post_path_int",
+    "adapter_settings": {
+      "endpoint": "https://www.careers.philips.com/professional/widgets",
+      "value_path": "refineSearch.totalHits",
+      "payload": {
+        "lang": "en_emea",
+        "deviceType": "desktop",
+        "country": "emea",
+        "pageName": "search-results",
+        "ddoKey": "refineSearch",
+        "sortBy": "",
+        "subsearch": "",
+        "from": 0,
+        "jobs": true,
+        "counts": true,
+        "all_fields": [
+          "category",
+          "type",
+          "country",
+          "state",
+          "city"
+        ],
+        "size": 10,
+        "clearAll": false,
+        "jdsource": "facets",
+        "isSliderEnable": false,
+        "pageId": "page69",
+        "siteType": "professional",
+        "keywords": "",
+        "global": true,
+        "selected_fields": {
+          "type": [
+            "Full time"
+          ]
+        },
+        "locationData": {}
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "timeout_seconds": 20
+    },
+    "is_active": true,
+    "isin": "NL0000009538"
+  },
+  {
+    "name": "Kontron",
+    "portal_url": "https://cms.kontron.com/jobs",
+    "adapter_type": "json_get_path_int",
+    "adapter_settings": {
+      "endpoint": "https://cms.kontron.com/api/softgarden/jobs?locale=de",
+      "value_path": "count",
+      "timeout_seconds": 20
+    },
+    "is_active": true,
+    "isin": "AT0000A0E9W5"
+  },
+  {
+    "name": "Intel",
+    "portal_url": "https://intel.wd1.myworkdayjobs.com/External",
+    "adapter_type": "json_post_path_int",
+    "adapter_settings": {
+      "endpoint": "https://intel.wd1.myworkdayjobs.com/wday/cxs/intel/External/jobs",
+      "payload": {
+        "appliedFacets": {},
+        "limit": 20,
+        "offset": 0,
+        "searchText": ""
+      },
+      "value_path": "total",
+      "timeout_seconds": 30,
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+      }
+    },
+    "is_active": true,
+    "isin": "US4581401001"
+  },
+  {
+    "name": "AMD",
+    "portal_url": "https://careers.amd.com",
+    "adapter_type": "json_get_path_int",
+    "adapter_settings": {
+      "endpoint": "https://careers.amd.com/api/jobs",
+      "params": {
+        "page": "1",
+        "sortBy": "relevance",
+        "descending": "false",
+        "internal": "false"
+      },
+      "value_path": "totalCount",
+      "timeout_seconds": 30
+    },
+    "is_active": true,
+    "isin": "US0079031078"
+  },
+  {
+    "name": "Deutsche Telekom",
+    "portal_url": "https://careers.telekom.com",
+    "adapter_type": "json_post_path_int",
+    "adapter_settings": {
+      "endpoint": "https://careers.telekom.com/api/jobs-proxy/search?page_type=pupils-page&experience_level=Berufserfahrene%3BJunior-Einstieg%3BEinstiegsprogram&job_source=apprenticeship",
+      "payload": {
+        "user_query": "",
+        "locale": "de"
+      },
+      "value_path": "pagination_info.count",
+      "timeout_seconds": 30,
+      "headers": {
+        "content-type": "application/json"
+      }
+    },
+    "is_active": true,
+    "isin": "DE0005557508"
+  },
+  {
+    "name": "TUI",
+    "portal_url": "https://careers.tuigroup.com/en/search-jobs",
+    "adapter_type": "playwright_text_regex",
+    "adapter_settings": {
+      "wait_for_selector": "h2",
+      "regex_pattern": "We found (\\d+) results",
+      "timeout_ms": 30000
+    },
+    "is_active": true,
+    "isin": "DE000TUAG505"
+  },
+  {
+    "name": "CTS Eventim",
+    "portal_url": "https://karriere.eventim.de",
+    "adapter_type": "json_post_path_int",
+    "adapter_settings": {
+      "endpoint": "https://pcw-api.softgarden.de/widgets/job-list/job-ads",
+      "value_path": "jobsLength",
+      "payload": {
+        "userId": "e41582bf-4d48-4213-845e-0ae91a880789",
+        "projectId": "301dbf76-9f80-4236-87ac-5364c49fd34d",
+        "pageId": "b550872a-4cb7-4039-9b53-a9e2b0cfb655",
+        "locale": "de",
+        "listState": {
+          "search": "",
+          "disableSearchInDescription": false,
+          "location": {
+            "osmLocation": "",
+            "range": 25,
+            "coords": []
+          },
+          "filters": {
+            "careerLevel": [
+              "Berufserfahrene"
+            ],
+            "category": [],
+            "location": [],
+            "company": [],
+            "partnership": [],
+            "region": [],
+            "country": [],
+            "workTime": [],
+            "remoteStatus": [],
+            "workExperience": [],
+            "employmentType": []
+          }
+        },
+        "isActiveCustomJobPages": true,
+        "isUseLayoutsOfSubsidiaries": false,
+        "filterStatus": {
+          "careerLevel": true,
+          "category": true,
+          "partnership": false,
+          "region": false,
+          "location": true,
+          "company": true,
+          "country": false,
+          "workTime": false,
+          "remoteStatus": false,
+          "workExperience": false,
+          "employmentType": false
+        },
+        "numberOfJobsOnPage": 8,
+        "pageNumber": "1",
+        "isForCurrentLocale": false,
+        "isGetFilters": true
+      },
+      "headers": {
+        "content-type": "application/json"
+      },
+      "timeout_seconds": 20
+    },
+    "is_active": true,
+    "isin": "DE0005470306"
+  },
+  {
+    "name": "Carnival Cruise Line",
+    "portal_url": "https://jobs.carnival.com/search-jobs",
+    "adapter_type": "playwright_text_regex",
+    "adapter_settings": {
+      "wait_for_selector": "h2",
+      "regex_pattern": "(\\d+) results found",
+      "timeout_ms": 45000
+    },
+    "is_active": true,
+    "isin": "PA1436583006"
+  },
+  {
+    "name": "3M",
+    "portal_url": "https://3m.wd1.myworkdayjobs.com/Search",
+    "adapter_type": "json_post_path_int",
+    "adapter_settings": {
+      "endpoint": "https://3m.wd1.myworkdayjobs.com/wday/cxs/3m/Search/jobs",
+      "payload": {
+        "appliedFacets": { "workerSubType": ["e937e224196b10667704cc6cf6782bae"] },
+        "searchText": ""
+      },
+      "value_path": "total",
+      "timeout_seconds": 30,
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+      }
+    },
+    "is_active": true,
+    "isin": "US88579Y1010"
+  },
+  {
+    "name": "AbbVie",
+    "portal_url": "https://careers.abbvie.com/en/jobs?q=&options=&page=1&la=0&lo=0&lr=100",
+    "adapter_type": "static_text_regex",
+    "adapter_settings": {
+      "regex_pattern": "(\\d[\\d,]*)\\s*result\\(s\\)",
+      "timeout_seconds": 20
+    },
+    "is_active": true,
+    "isin": "US00287Y1091"
+  }
+]

@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { createContext, ReactNode, useContext, useEffect, useRef } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../api/client";
+import { parseBackendDate } from "./format";
 import type { RunStockStatus, RunSummary, StepStatus } from "../types/run";
 
 // Polling intervals in milliseconds. We start aggressively while the run is
@@ -58,17 +59,17 @@ export function runStatusLabel(status: string | null | undefined): string {
 export function liveRunSeconds(run: RunSummary): number {
   if (run.duration_seconds && run.phase === "finished") return run.duration_seconds;
   if (!run.started_at) return 0;
-  const startedMs = new Date(run.started_at).getTime();
+  const startedMs = parseBackendDate(run.started_at).getTime();
   if (Number.isNaN(startedMs)) return run.duration_seconds || 0;
-  const endMs = run.finished_at ? new Date(run.finished_at).getTime() : Date.now();
+  const endMs = run.finished_at ? parseBackendDate(run.finished_at).getTime() : Date.now();
   return Math.max(0, Math.round((endMs - startedMs) / 1000));
 }
 
 // Same idea but for an individual stock entry inside a run.
 export function liveStockSeconds(s: RunStockStatus): number | null {
   if (!s.started_at) return null;
-  const start = new Date(s.started_at).getTime();
-  const end = s.finished_at ? new Date(s.finished_at).getTime() : Date.now();
+  const start = parseBackendDate(s.started_at).getTime();
+  const end = s.finished_at ? parseBackendDate(s.finished_at).getTime() : Date.now();
   if (Number.isNaN(start) || Number.isNaN(end)) return null;
   return Math.max(0, Math.round((end - start) / 1000));
 }
@@ -79,25 +80,48 @@ export interface CurrentRunResult {
   isFetching: boolean;
 }
 
-// Subscribe to the global "current run" feed. Returns the latest snapshot and
-// transparently polls (with backoff) while a run is hot. The query key is
-// shared with RunsPage / RefreshStatusCard so multiple subscribers reuse the
-// same network requests via React Query.
-export function useCurrentRun(): CurrentRunResult {
+export type RunTypeFilter = "market" | "jobs" | "any";
+
+// ---------------------------------------------------------------------------
+// Context — single polling loop mounted once inside AuthProvider
+// ---------------------------------------------------------------------------
+
+const CurrentRunContext = createContext<CurrentRunResult | null>(null);
+
+/** Mount once inside AuthProvider so every component reading `useCurrentRun`
+ *  shares one polling loop instead of N separate intervals. */
+export function CurrentRunProvider({ children }: { children: ReactNode }) {
+  const result = useCurrentRunQuery("market", true);
+  return (
+    <CurrentRunContext.Provider value={result}>{children}</CurrentRunContext.Provider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Internal query – shared by the Provider and the public hook fallback
+// ---------------------------------------------------------------------------
+
+function useCurrentRunQuery(runType: RunTypeFilter, enabled: boolean): CurrentRunResult {
   const tickRef = useRef(0);
   const query = useQuery<RunSummary | null>({
-    queryKey: ["run-current"],
-    queryFn: async () => (await api.get("/run-logs/current")).data,
-    refetchInterval: (q) => {
-      const data = q.state.data as RunSummary | null | undefined;
-      if (!data || data.phase === "finished") {
-        tickRef.current = 0;
-        return false;
-      }
-      const next = nextPollInterval(tickRef.current);
-      tickRef.current += 1;
-      return next;
+    queryKey: ["run-current", runType],
+    enabled,
+    queryFn: async () => {
+      const params = runType === "any" ? {} : { run_type: runType };
+      return (await api.get("/run-logs/current", { params })).data;
     },
+    refetchInterval: enabled
+      ? (q) => {
+          const data = q.state.data as RunSummary | null | undefined;
+          if (!data || data.phase === "finished") {
+            tickRef.current = 0;
+            return false;
+          }
+          const next = nextPollInterval(tickRef.current);
+          tickRef.current += 1;
+          return next;
+        }
+      : false,
     placeholderData: keepPreviousData,
   });
   return {
@@ -106,6 +130,30 @@ export function useCurrentRun(): CurrentRunResult {
     isFetching: query.isFetching,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Public hook
+// ---------------------------------------------------------------------------
+
+/** Subscribe to the "current run" feed.
+ *
+ * For `"market"` runs (the default) the data is served from `CurrentRunProvider`,
+ * which maintains a single polling subscription for the whole app. Non-market
+ * types fall back to their own direct query.
+ */
+export function useCurrentRun(runType: RunTypeFilter = "market"): CurrentRunResult {
+  const ctx = useContext(CurrentRunContext);
+  // Always call the query hook to satisfy the Rules of Hooks, but disable it
+  // when the context already provides the data we need.
+  const shouldUseDirect = !ctx || runType !== "market";
+  const direct = useCurrentRunQuery(runType, shouldUseDirect);
+
+  return shouldUseDirect ? direct : ctx;
+}
+
+// ---------------------------------------------------------------------------
+// Invalidation helper
+// ---------------------------------------------------------------------------
 
 // Fire React Query invalidations the moment the global "current run" flips to
 // `finished`. Use on pages that show derived data (stocks/dashboard) so they
