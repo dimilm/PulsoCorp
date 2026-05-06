@@ -4,6 +4,25 @@ import { api } from "../api/client";
 import type { HistoryRange, HistoryResponse, Stock } from "../types";
 import { STOCKS_QUERY_KEY, STOCKS_LIST_KEY } from "./useStockMutations";
 
+export const SECTOR_SUGGESTIONS_KEY = [...STOCKS_QUERY_KEY, "sectors"] as const;
+
+export interface SectorSuggestion {
+  name: string;
+  count: number;
+}
+
+export function useSectorSuggestions() {
+  return useQuery<SectorSuggestion[]>({
+    queryKey: SECTOR_SUGGESTIONS_KEY,
+    queryFn: async () => {
+      const res = await api.get("/stocks/sectors");
+      return res.data as SectorSuggestion[];
+    },
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+  });
+}
+
 export const STOCK_DETAIL_KEY = (isin: string) => [...STOCKS_QUERY_KEY, "detail", isin] as const;
 export const STOCK_HISTORY_KEY = (isin: string, range: HistoryRange) =>
   [...STOCKS_QUERY_KEY, "history", isin, range] as const;

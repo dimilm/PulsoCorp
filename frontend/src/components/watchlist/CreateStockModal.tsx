@@ -5,6 +5,7 @@ import { Modal } from "../Modal";
 import { extractApiError } from "../../lib/apiError";
 import { toast } from "../../lib/toast";
 import { validateCreateStock } from "../../lib/stockValidation";
+import { useSectorSuggestions } from "../../hooks/useStockQueries";
 
 const EMPTY_STOCK: StockFormValues = {
   isin: "",
@@ -30,6 +31,8 @@ export function CreateStockModal({ open, onClose, tagSuggestions, onCreated, ini
   const [createError, setCreateError] = useState<string | null>(null);
   const [createFieldErrors, setCreateFieldErrors] = useState<StockFormErrors>({});
   const [isPending, setIsPending] = useState(false);
+
+  const { data: sectorSuggestions } = useSectorSuggestions();
 
   // Re-initialise form state whenever the modal opens, seeding from initialValues
   // when provided (e.g. opened from the Jobs page with a pre-filled ISIN/name).
@@ -113,6 +116,8 @@ export function CreateStockModal({ open, onClose, tagSuggestions, onCreated, ini
         onSubmit={createStock}
         errors={createFieldErrors}
         tagSuggestions={tagSuggestions}
+        sectorSuggestions={sectorSuggestions ?? []}
+        isPending={isPending}
       />
       {createError && (
         <p className="form-banner-error" role="alert">

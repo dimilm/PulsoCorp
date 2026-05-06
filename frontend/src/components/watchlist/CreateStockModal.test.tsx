@@ -1,11 +1,13 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CreateStockModal } from "./CreateStockModal";
 import { api } from "../../api/client";
 
 vi.mock("../../api/client", () => ({
   api: {
     post: vi.fn(),
+    get: vi.fn(),
   },
 }));
 
@@ -17,6 +19,30 @@ vi.mock("../../lib/toast", () => ({
   },
 }));
 
+// Mock useSectorSuggestions so tests don't need a real API
+const mockSectorSuggestions = [
+  { name: "Tech", count: 5 },
+  { name: "Finance", count: 3 },
+];
+const mockUseSectorSuggestions = vi.fn(() => ({ data: mockSectorSuggestions }));
+
+vi.mock("../../hooks/useStockQueries", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../hooks/useStockQueries")>();
+  return {
+    ...actual,
+    useSectorSuggestions: () => mockUseSectorSuggestions(),
+  };
+});
+
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  );
+}
+
 const noop = async () => {};
 
 describe("CreateStockModal", () => {
@@ -25,7 +51,7 @@ describe("CreateStockModal", () => {
   });
 
   it("renders nothing when closed", () => {
-    const { container } = render(
+    const { container } = renderWithQueryClient(
       <CreateStockModal
         open={false}
         onClose={noop}
@@ -33,11 +59,11 @@ describe("CreateStockModal", () => {
         onCreated={noop}
       />
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(container.firstChild).toBeNull();
   });
 
   it("renders the form when open", () => {
-    render(
+    renderWithQueryClient(
       <CreateStockModal
         open={true}
         onClose={noop}
@@ -51,7 +77,7 @@ describe("CreateStockModal", () => {
 
   it("calls onClose when Abbrechen is clicked", async () => {
     const onClose = vi.fn();
-    render(
+    renderWithQueryClient(
       <CreateStockModal
         open={true}
         onClose={onClose}
@@ -68,7 +94,7 @@ describe("CreateStockModal", () => {
       response: { data: { detail: "ISIN already exists" } },
     });
 
-    render(
+    renderWithQueryClient(
       <CreateStockModal
         open={true}
         onClose={noop}
@@ -90,7 +116,7 @@ describe("CreateStockModal", () => {
   // --- New tests for initialValues and isPending ---
 
   it("opens with empty fields when no initialValues are provided (backward compat)", () => {
-    render(
+    renderWithQueryClient(
       <CreateStockModal
         open={true}
         onClose={noop}
@@ -103,7 +129,7 @@ describe("CreateStockModal", () => {
   });
 
   it("pre-fills ISIN and name fields when initialValues are provided", () => {
-    render(
+    renderWithQueryClient(
       <CreateStockModal
         open={true}
         onClose={noop}
@@ -117,45 +143,54 @@ describe("CreateStockModal", () => {
   });
 
   it("re-seeds fields with new initialValues when modal is reopened", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { rerender } = render(
-      <CreateStockModal
-        open={false}
-        onClose={noop}
-        tagSuggestions={[]}
-        onCreated={noop}
-        initialValues={{ isin: "DE0007164600", name: "SAP SE" }}
-      />
+      <QueryClientProvider client={queryClient}>
+        <CreateStockModal
+          open={false}
+          onClose={noop}
+          tagSuggestions={[]}
+          onCreated={noop}
+          initialValues={{ isin: "DE0007164600", name: "SAP SE" }}
+        />
+      </QueryClientProvider>
     );
     // Open with first target
     rerender(
-      <CreateStockModal
-        open={true}
-        onClose={noop}
-        tagSuggestions={[]}
-        onCreated={noop}
-        initialValues={{ isin: "DE0007164600", name: "SAP SE" }}
-      />
+      <QueryClientProvider client={queryClient}>
+        <CreateStockModal
+          open={true}
+          onClose={noop}
+          tagSuggestions={[]}
+          onCreated={noop}
+          initialValues={{ isin: "DE0007164600", name: "SAP SE" }}
+        />
+      </QueryClientProvider>
     );
     expect((screen.getByLabelText(/isin/i) as HTMLInputElement).value).toBe("DE0007164600");
 
     // Close and reopen with different target
     rerender(
-      <CreateStockModal
-        open={false}
-        onClose={noop}
-        tagSuggestions={[]}
-        onCreated={noop}
-        initialValues={{ isin: "US0378331005", name: "Apple Inc." }}
-      />
+      <QueryClientProvider client={queryClient}>
+        <CreateStockModal
+          open={false}
+          onClose={noop}
+          tagSuggestions={[]}
+          onCreated={noop}
+          initialValues={{ isin: "US0378331005", name: "Apple Inc." }}
+        />
+      </QueryClientProvider>
     );
     rerender(
-      <CreateStockModal
-        open={true}
-        onClose={noop}
-        tagSuggestions={[]}
-        onCreated={noop}
-        initialValues={{ isin: "US0378331005", name: "Apple Inc." }}
-      />
+      <QueryClientProvider client={queryClient}>
+        <CreateStockModal
+          open={true}
+          onClose={noop}
+          tagSuggestions={[]}
+          onCreated={noop}
+          initialValues={{ isin: "US0378331005", name: "Apple Inc." }}
+        />
+      </QueryClientProvider>
     );
     expect((screen.getByLabelText(/isin/i) as HTMLInputElement).value).toBe("US0378331005");
     expect((screen.getByLabelText(/name/i) as HTMLInputElement).value).toBe("Apple Inc.");
@@ -170,7 +205,7 @@ describe("CreateStockModal", () => {
       })
     );
 
-    render(
+    renderWithQueryClient(
       <CreateStockModal
         open={true}
         onClose={noop}
@@ -201,7 +236,7 @@ describe("CreateStockModal", () => {
     const onCreated = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
 
-    render(
+    renderWithQueryClient(
       <CreateStockModal
         open={true}
         onClose={onClose}
@@ -222,7 +257,7 @@ describe("CreateStockModal", () => {
       response: { data: { detail: "Conflict" } },
     });
 
-    render(
+    renderWithQueryClient(
       <CreateStockModal
         open={true}
         onClose={noop}
@@ -240,5 +275,57 @@ describe("CreateStockModal", () => {
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^speichern$/i })).not.toBeDisabled();
+  });
+
+  // --- Integration tests: sector suggestions ---
+
+  it("calls useSectorSuggestions when modal is rendered", () => {
+    mockUseSectorSuggestions.mockClear();
+    renderWithQueryClient(
+      <CreateStockModal open={true} onClose={noop} tagSuggestions={[]} onCreated={noop} />
+    );
+    expect(mockUseSectorSuggestions).toHaveBeenCalled();
+  });
+
+  it("passes sector suggestions to the sector input field", () => {
+    renderWithQueryClient(
+      <CreateStockModal open={true} onClose={noop} tagSuggestions={[]} onCreated={noop} />
+    );
+    // Focus the sector input to trigger the dropdown
+    const sectorInput = screen.getByPlaceholderText(/industrie/i);
+    fireEvent.focus(sectorInput);
+    // Suggestions from the mock should appear in the dropdown
+    expect(screen.getByText("Tech")).toBeInTheDocument();
+    expect(screen.getByText("Finance")).toBeInTheDocument();
+  });
+
+  it("sector input is disabled while POST is in flight", async () => {
+    let resolvePost!: () => void;
+    vi.mocked(api.post).mockReturnValueOnce(
+      new Promise<{ data: unknown }>((res) => {
+        resolvePost = () => res({ data: {} });
+      })
+    );
+
+    renderWithQueryClient(
+      <CreateStockModal
+        open={true}
+        onClose={noop}
+        tagSuggestions={[]}
+        onCreated={noop}
+        initialValues={{ isin: "DE0007164600", name: "SAP SE" }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /speichern/i }));
+
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(/industrie/i)).toBeDisabled()
+    );
+
+    resolvePost();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /speichern…/i })).not.toBeInTheDocument()
+    );
   });
 });
