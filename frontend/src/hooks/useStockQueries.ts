@@ -63,3 +63,18 @@ export function useStockPeers(isin: string | undefined, limit = 5) {
     staleTime: 60_000,
   });
 }
+
+/** Loads the full unfiltered watchlist. Uses the same STOCKS_LIST_KEY as
+ *  WatchlistPage so cache entries are shared and prefix-invalidation via
+ *  `invalidateQueries({ queryKey: STOCKS_LIST_KEY })` hits both. */
+export function useStocks() {
+  return useQuery<Stock[]>({
+    queryKey: STOCKS_LIST_KEY,
+    queryFn: async () => {
+      const res = await api.get("/stocks");
+      return res.data as Stock[];
+    },
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+  });
+}
