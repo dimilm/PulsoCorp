@@ -5,6 +5,7 @@
 @import "./styles/tokens.css";
 @import "./styles/responsive.css";
 @import "./styles/base.css";
+@import "./styles/nav-mobile.css";
 @import "./styles/forms.css";
 @import "./styles/buttons.css";
 @import "./styles/badges.css";
@@ -18,3 +19,4 @@
 @import "./styles/jobs.css";
 @import "./styles/ai.css";
 @import "./styles/settings.css";
+@import "./styles/watchlist-mobile.css";

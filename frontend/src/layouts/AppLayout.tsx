@@ -1,9 +1,13 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { NavLink } from "react-router-dom";
 
+import { MobileBottomTabs } from "../components/nav/MobileBottomTabs";
+import { MobileDrawer } from "../components/nav/MobileDrawer";
+import { MobileTopBar } from "../components/nav/MobileTopBar";
 import { LogoutButton } from "../components/LogoutButton";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../hooks/useAuth";
+import { useIsMobile } from "../hooks/useBreakpoint";
 import { useCurrentRun } from "../lib/runProgress";
 
 interface Props {
@@ -19,6 +23,9 @@ const RUN_TYPE_LABEL = {
 
 export function AppLayout({ children }: Props) {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
   // Both hooks are safe at the top level: the market subscription is shared
   // through CurrentRunProvider (mounted in main.tsx), and the jobs hook only
   // polls while a jobs run is active. When idle they sit on a single fetch.
@@ -31,10 +38,29 @@ export function AppLayout({ children }: Props) {
     activeRunTypes.length === 0
       ? undefined
       : `Aktiv: ${activeRunTypes.map((t) => RUN_TYPE_LABEL[t]).join(", ")}`;
+  const hasActiveRun = activeRunTypes.length > 0;
 
   return (
     <>
-      {user && (
+      {user && isMobile && (
+        <>
+          <MobileTopBar
+            onOpenDrawer={() => setDrawerOpen(true)}
+            hasActiveRun={hasActiveRun}
+            activeRunTitle={indicatorTitle}
+          />
+          <MobileDrawer
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            username={user.username}
+          />
+          <MobileBottomTabs
+            hasActiveRun={hasActiveRun}
+            activeRunTitle={indicatorTitle}
+          />
+        </>
+      )}
+      {user && !isMobile && (
         <nav>
           <NavLink to="/" end className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
             Dashboard
@@ -51,7 +77,7 @@ export function AppLayout({ children }: Props) {
             className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
           >
             <span>Aktualisierungen</span>
-            {activeRunTypes.length > 0 && (
+            {hasActiveRun && (
               <span className="nav-run-indicator" title={indicatorTitle}>
                 <span className="nav-run-dot" aria-hidden="true" />
                 <span className="nav-run-text">

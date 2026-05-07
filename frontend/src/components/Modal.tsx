@@ -4,6 +4,10 @@ import { createPortal } from "react-dom";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import { XIcon } from "./icons";
 
+/** 'center' is the default modal positioned in the upper-center of the
+ *  viewport. 'bottomSheet' slides up from the bottom edge — ideal on mobile. */
+export type ModalVariant = "center" | "bottomSheet";
+
 interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -12,6 +16,7 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   closeOnBackdrop?: boolean;
+  variant?: ModalVariant;
 }
 
 /** Top-level Modal component. Renders into a portal so it can escape ancestor
@@ -25,6 +30,7 @@ export function Modal({
   children,
   footer,
   closeOnBackdrop = true,
+  variant = "center",
 }: ModalProps) {
   if (!open) return null;
   return createPortal(
@@ -34,6 +40,7 @@ export function Modal({
       subtitle={subtitle}
       footer={footer}
       closeOnBackdrop={closeOnBackdrop}
+      variant={variant}
     >
       {children}
     </ModalShell>,
@@ -47,10 +54,11 @@ interface ShellProps {
   subtitle?: ReactNode;
   footer?: ReactNode;
   closeOnBackdrop: boolean;
+  variant: ModalVariant;
   children: ReactNode;
 }
 
-function ModalShell({ onClose, title, subtitle, footer, closeOnBackdrop, children }: ShellProps) {
+function ModalShell({ onClose, title, subtitle, footer, closeOnBackdrop, variant, children }: ShellProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const subtitleId = useId();
@@ -59,16 +67,18 @@ function ModalShell({ onClose, title, subtitle, footer, closeOnBackdrop, childre
   useBodyScrollLock();
   useFocusTrap(cardRef, true);
 
+  const isSheet = variant === "bottomSheet";
+
   return (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
-      className="modal-backdrop"
+      className={isSheet ? "modal-backdrop modal-backdrop--bottom" : "modal-backdrop"}
       onMouseDown={(e) => {
         if (closeOnBackdrop && e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="modal-card"
+        className={isSheet ? "modal-card modal-card--bottom-sheet" : "modal-card"}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -76,6 +86,7 @@ function ModalShell({ onClose, title, subtitle, footer, closeOnBackdrop, childre
         ref={cardRef}
         tabIndex={-1}
       >
+        {isSheet && <div className="modal-drag-handle" aria-hidden="true" />}
         <header className="modal-header">
           <div className="modal-header-text">
             <h3 id={titleId}>{title}</h3>

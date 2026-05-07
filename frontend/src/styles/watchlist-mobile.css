@@ -1,0 +1,207 @@
+/* Mobile Watchlist card list — shown only on screens ≤ 768px */
+
+.wl-mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wl-mobile-sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 12px;
+  flex-wrap: wrap;
+}
+
+.wl-mobile-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.wl-mobile-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---- Individual card ------------------------------------------------- */
+
+.wl-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Header */
+.wl-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wl-card-name-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.wl-card-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong);
+  text-decoration: none;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wl-card-name:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.wl-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wl-card-isin {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+}
+
+.wl-card-meta-sep {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.wl-card-sector {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* KPI grid */
+.wl-card-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  background: var(--bg-surface-2);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.wl-card-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  text-align: center;
+}
+
+.wl-card-kpi-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.wl-card-kpi-value {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+/* Reuse pill classes for colour coding */
+.wl-card-kpi-value.pill-green { color: #15803d; }
+.wl-card-kpi-value.pill-red   { color: #b91c1c; }
+.wl-card-kpi-value.pill-cyan  { color: #0e7490; }
+
+/* Stellen row */
+.wl-card-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  background: var(--bg-surface-2);
+  border-radius: 8px;
+  border-left: 3px solid var(--accent-soft-bg-strong);
+}
+
+.wl-card-jobs-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.wl-card-jobs-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wl-card-jobs-count {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+  line-height: 1;
+}
+
+.wl-card-jobs-delta {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.wl-card-jobs-delta.delta-up   { background: #dcfce7; color: #15803d; }
+.wl-card-jobs-delta.delta-down { background: #fee2e2; color: #b91c1c; }
+
+/* Footer */
+.wl-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wl-card-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wl-card-status {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  padding: 2px 8px;
+  border-radius: 999px;
+}

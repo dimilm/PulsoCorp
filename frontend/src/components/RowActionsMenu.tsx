@@ -21,6 +21,7 @@ export default function RowActionsMenu({
     <Dropdown
       align="right"
       className="row-actions"
+      mobileSheetTitle={stock.name}
       trigger={({ toggle, open }) => (
         <button
           type="button"

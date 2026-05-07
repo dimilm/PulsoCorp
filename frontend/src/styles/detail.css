@@ -747,3 +747,42 @@
 .edit-danger-section {
   margin-top: 8px;
 }
+
+/* ---- 480px pass: small-phone refinements -------------------------------- */
+
+@media (max-width: 480px) {
+  /* Chart tab strip: scroll horizontally instead of wrapping */
+  .chart-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Peer card stats: 2 columns instead of 3 */
+  .peer-card-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Agent action bar: stack vertically */
+  .agent-section-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Edit grid: single column */
+  .edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Hero: tighter padding */
+  .detail-hero {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  /* Detail grid: ensure single column below lg breakpoint already handles
+     but add extra adjustment for very narrow phones */
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -94,6 +94,14 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
 
+  /* Breakpoint thresholds — mirrored in src/lib/breakpoints.ts */
+  --bp-sm: 480px;
+  --bp-md: 768px;
+  --bp-lg: 1080px;
+
+  /* Minimum tap target (Apple HIG / Material: 44px) */
+  --touch-target: 44px;
+
   /* Chart palette (read by useChartTheme; recharts cannot consume CSS vars
    * directly because it needs literal stroke/fill values for its SVG props). */
   --chart-grid: var(--c-gray-200);

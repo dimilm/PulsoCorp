@@ -162,6 +162,27 @@ input::placeholder {
   }
 }
 
+/* Mobile: bump font-size to 16px to prevent iOS auto-zoom on focus,
+ * and ensure a minimum tap-target height of 44px on all inputs/selects. */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea,
+  .form-input,
+  .search-field > input,
+  .filter-group input {
+    font-size: 16px !important;
+    min-height: var(--touch-target, 44px);
+  }
+
+  .field input,
+  .field select {
+    font-size: 16px;
+    min-height: var(--touch-target, 44px);
+    padding: 10px 12px;
+  }
+}
+
 .toggle-row {
   display: flex;
   align-items: center;

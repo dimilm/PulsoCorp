@@ -2,8 +2,10 @@ import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { JobsMobileList } from "../components/jobs/JobsMobileList";
 import { Spinner } from "../components/Spinner";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useIsMobile } from "../hooks/useBreakpoint";
 import {
   JOB_SOURCES_KEY,
   useCancelJobsRefresh,
@@ -109,6 +111,7 @@ function FilterPill({
 export function JobsPage() {
   useDocumentTitle("Stellen");
   const qc = useQueryClient();
+  const isMobile = useIsMobile();
   const [params] = useSearchParams();
   const isinFilter = params.get("isin");
   const [filter, setFilter] = useState<Filter>("all");
@@ -444,7 +447,17 @@ export function JobsPage() {
         </p>
       )}
 
-      <div className="run-table-wrapper">
+      {isMobile ? (
+        <JobsMobileList
+          sources={visibleSources}
+          statusByJobId={statusByJobId}
+          isRunning={isRunning}
+          onRefreshSource={handleRefreshSource}
+          isRefreshPending={refreshSource.isPending}
+        />
+      ) : null}
+
+      <div className="run-table-wrapper" style={isMobile ? { display: "none" } : undefined}>
         {visibleSources.length === 0 ? (
           <p className="run-empty">Keine Quellen gefunden.</p>
         ) : (

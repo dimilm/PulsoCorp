@@ -295,3 +295,69 @@
   color: var(--text-secondary);
   font-style: italic;
 }
+
+/* ---- Dropdown Bottom-Sheet (mobile) ----------------------------------- */
+
+.dropdown-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.dropdown-sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.dropdown-sheet-items {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: calc(60dvh - 80px);
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+.dropdown-sheet-items .dropdown-item {
+  min-height: var(--touch-target, 44px);
+  font-size: 15px;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.dropdown-sheet-items .dropdown-separator {
+  margin: 6px 4px;
+}
+
+.dropdown-sheet-items .dropdown-row-action {
+  width: var(--touch-target, 44px);
+  height: var(--touch-target, 44px);
+}
+
+/* Mobile: full-width search field, larger filter chip clear targets */
+@media (max-width: 768px) {
+  .search-bar {
+    gap: 8px;
+  }
+
+  .search-field {
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 100%;
+    order: -1;
+    width: 100%;
+  }
+
+  .search-field > input {
+    height: var(--touch-target, 44px);
+    font-size: 16px;
+  }
+
+  .filter-chip > button {
+    width: 28px;
+    height: 28px;
+  }
+}

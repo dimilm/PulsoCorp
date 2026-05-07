@@ -122,3 +122,156 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ---- Jobs mobile card list -------------------------------------------- */
+
+.jobs-mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.jobs-mobile-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: var(--shadow-sm);
+}
+
+.jobs-mobile-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.jobs-mobile-card-name-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.jobs-mobile-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-strong);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jobs-mobile-card-name:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.jobs-mobile-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.jobs-mobile-card-adapter {
+  font-size: 10px;
+  background: var(--bg-subtle);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+.jobs-mobile-card-sep {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.jobs-mobile-card-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  background: var(--bg-surface-2);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.jobs-mobile-card-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  text-align: center;
+}
+
+.jobs-mobile-card-kpi-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.jobs-mobile-card-kpi-value {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+.jobs-mobile-card-count {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.jobs-mobile-card-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Colour-coded left border when live status is present */
+.jobs-mobile-card.run-row-running  { border-left: 3px solid #f59e0b; }
+.jobs-mobile-card.run-row-done     { border-left: 3px solid #22c55e; }
+.jobs-mobile-card.run-row-error    { border-left: 3px solid #ef4444; }
+.jobs-mobile-card.run-row-cancelled { border-left: 3px solid #94a3b8; }
+
+/* Bug-fix: the .run-table-wrapper > .run-table rule in responsive.css does
+ * not apply to .jobs-table. Set the minimum width here so horizontal scroll
+ * kicks in properly on narrow viewports. */
+.run-table-wrapper > .jobs-table {
+  min-width: 820px;
+}
+
+/* Mobile: filter-pill strips scroll horizontally instead of wrapping into many rows */
+@media (max-width: 768px) {
+  .run-filter-row,
+  .jobs-toolbar-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 4px;
+  }
+
+  .run-filter-row .run-filter-pill,
+  .jobs-toolbar-filters .run-filter-pill {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+
+  .jobs-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .jobs-toolbar .form-input {
+    width: 100%;
+  }
+}

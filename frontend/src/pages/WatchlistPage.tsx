@@ -4,9 +4,11 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
+import { Modal } from "../components/Modal";
 import { PlusIcon, SearchIcon } from "../components/icons";
 import { Spinner } from "../components/Spinner";
 import WatchlistTable from "../components/WatchlistTable";
+import { WatchlistMobileList } from "../components/watchlist/WatchlistMobileList";
 import { ActiveFilterChips } from "../components/watchlist/ActiveFilterChips";
 import type { ActiveFilter } from "../components/watchlist/ActiveFilterChips";
 import { CreateStockModal } from "../components/watchlist/CreateStockModal";
@@ -15,6 +17,7 @@ import { WatchlistFilterPanel } from "../components/watchlist/WatchlistFilterPan
 import { WatchlistHeader } from "../components/watchlist/WatchlistHeader";
 import { useColorThresholds } from "../hooks/useColorThresholds";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useIsMobile } from "../hooks/useBreakpoint";
 import { useJobsAggregate } from "../hooks/useJobsAggregate";
 import { usePresets } from "../hooks/usePresets";
 import {
@@ -45,6 +48,7 @@ export function WatchlistPage() {
   useDocumentTitle("Watchlist");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Seed filter + sort state from the URL exactly once.
@@ -249,7 +253,7 @@ export function WatchlistPage() {
 
       <ActiveFilterChips activeFilters={activeFilters} onReset={filters.reset} />
 
-      {filtersOpen && (
+      {filtersOpen && !isMobile && (
         <WatchlistFilterPanel
           values={v}
           allTags={allTags}
@@ -258,6 +262,26 @@ export function WatchlistPage() {
           onReset={filters.reset}
         />
       )}
+
+      <Modal
+        open={filtersOpen && isMobile}
+        onClose={() => setFiltersOpen(false)}
+        title="Filter"
+        variant="bottomSheet"
+        footer={
+          <button type="button" className="btn-secondary" onClick={() => { filters.reset(); setFiltersOpen(false); }}>
+            Filter zurücksetzen
+          </button>
+        }
+      >
+        <WatchlistFilterPanel
+          values={v}
+          allTags={allTags}
+          onPatch={filters.patch}
+          onToggleTag={filters.toggleTag}
+          onReset={filters.reset}
+        />
+      </Modal>
 
       <CreateStockModal
         open={showCreateForm}
@@ -305,6 +329,20 @@ export function WatchlistPage() {
             }
           />
         )
+      ) : isMobile ? (
+        <WatchlistMobileList
+          stocks={filtered}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          thresholds={thresholds}
+          onSort={onSort}
+          onRefresh={refresh}
+          onEdit={(stock) => navigate(`/stocks/${stock.isin}/edit`)}
+          onDelete={deleteStock}
+          refreshDisabled={isRunActive}
+          jobsByIsin={jobsByIsin}
+          trendsByIsin={trendsByIsin}
+        />
       ) : (
         <div className={listLoading ? "table-wrapper is-loading" : "table-wrapper"}>
           {listLoading && (

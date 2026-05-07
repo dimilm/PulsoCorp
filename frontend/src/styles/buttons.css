@@ -182,3 +182,23 @@ button {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft-bg);
 }
+
+/* Mobile: enforce 44px tap-targets and slightly larger primary/secondary buttons */
+@media (max-width: 768px) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    height: var(--touch-target, 44px);
+    min-height: var(--touch-target, 44px);
+  }
+
+  .kebab-button {
+    width: var(--touch-target, 44px);
+    height: var(--touch-target, 44px);
+  }
+
+  .dropdown-row-action {
+    width: var(--touch-target, 44px);
+    height: var(--touch-target, 44px);
+  }
+}
