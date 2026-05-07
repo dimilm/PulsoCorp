@@ -2,7 +2,7 @@
 name = "companytracker-backend"
 version = "0.1.0"
 description = "CompanyTracker FastAPI backend"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<4.0"
 dependencies = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
@@ -46,3 +46,6 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["app*"]
 exclude = ["migrations*", "tests*", "data*"]
+
+[tool.poetry]
+package-mode = false

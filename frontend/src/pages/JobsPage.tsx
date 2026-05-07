@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { JobsMobileList } from "../components/jobs/JobsMobileList";
 import { Spinner } from "../components/Spinner";
+import { CreateStockModal } from "../components/watchlist/CreateStockModal";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useIsMobile } from "../hooks/useBreakpoint";
 import {
@@ -14,6 +15,8 @@ import {
   useRefreshJobSource,
   useRunJobStatuses,
 } from "../hooks/useJobSources";
+import { STOCKS_LIST_KEY } from "../hooks/useStockMutations";
+import { useStocks } from "../hooks/useStockQueries";
 import { extractApiError } from "../lib/apiError";
 import {
   formatDateOnly,
@@ -138,6 +141,13 @@ export function JobsPage() {
     isRunning
   );
 
+  // Load the watchlist to determine which ISINs are already tracked.
+  const stocksQuery = useStocks();
+  const isinSet = useMemo<Set<string>>(() => {
+    const stocks = stocksQuery.data ?? [];
+    return new Set(stocks.map((s) => s.isin));
+  }, [stocksQuery.data]);
+
   const sources = useMemo(() => sourcesQuery.data ?? [], [sourcesQuery.data]);
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -249,6 +259,17 @@ export function JobsPage() {
       onError: (err) =>
         toast.error(extractApiError(err, "Aktualisierung konnte nicht gestartet werden.")),
     });
+
+  // Watchlist-add state: which JobSource the user wants to add to the watchlist.
+  const [watchlistTarget, setWatchlistTarget] = useState<JobSource | null>(null);
+
+  function handleOpenAddToWatchlist(source: JobSource) {
+    setWatchlistTarget(source);
+  }
+
+  async function handleStockCreated() {
+    await qc.invalidateQueries({ queryKey: STOCKS_LIST_KEY });
+  }
 
   if (sourcesQuery.isLoading) {
     return (
@@ -508,9 +529,23 @@ export function JobsPage() {
                     </td>
                     <td>
                       {source.isin ? (
-                        <Link to={`/stocks/${source.isin}`} className="breadcrumb-link">
-                          {source.isin}
-                        </Link>
+                        isinSet.has(source.isin) ? (
+                          <Link to={`/stocks/${source.isin}`} className="breadcrumb-link">
+                            {source.isin}
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn-secondary btn-sm"
+                            onClick={() => handleOpenAddToWatchlist(source)}
+                            disabled={stocksQuery.isLoading}
+                            title={`${source.isin} zur Watchlist hinzufügen`}
+                            aria-label={`${source.isin} zur Watchlist hinzufügen`}
+                          >
+                            {source.isin}{" "}
+                            <span className="watchlist-add-icon" aria-hidden="true">＋</span>
+                          </button>
+                        )
                       ) : (
                         <span className="muted-count">–</span>
                       )}
@@ -584,6 +619,18 @@ export function JobsPage() {
           </table>
         )}
       </div>
+
+      <CreateStockModal
+        open={watchlistTarget !== null}
+        onClose={() => setWatchlistTarget(null)}
+        tagSuggestions={[]}
+        onCreated={handleStockCreated}
+        initialValues={
+          watchlistTarget
+            ? { isin: watchlistTarget.isin ?? "", name: watchlistTarget.name }
+            : undefined
+        }
+      />
     </div>
   );
 }

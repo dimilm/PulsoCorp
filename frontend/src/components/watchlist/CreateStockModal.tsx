@@ -1,9 +1,11 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { api } from "../../api/client";
 import { CreateStockForm, StockFormErrors, StockFormValues } from "../CreateStockForm";
 import { Modal } from "../Modal";
 import { extractApiError } from "../../lib/apiError";
+import { toast } from "../../lib/toast";
 import { validateCreateStock } from "../../lib/stockValidation";
+import { useSectorSuggestions } from "../../hooks/useStockQueries";
 
 const EMPTY_STOCK: StockFormValues = {
   isin: "",
@@ -19,12 +21,33 @@ interface Props {
   onClose: () => void;
   tagSuggestions: { name: string; count: number }[];
   onCreated: () => Promise<void>;
+  /** Optional pre-fill values. When provided, ISIN and name are seeded into
+   *  the form on open. Both fields remain editable so the user can correct them. */
+  initialValues?: { isin?: string; name?: string };
 }
 
-export function CreateStockModal({ open, onClose, tagSuggestions, onCreated }: Props) {
+export function CreateStockModal({ open, onClose, tagSuggestions, onCreated, initialValues }: Props) {
   const [newStock, setNewStock] = useState<StockFormValues>(EMPTY_STOCK);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createFieldErrors, setCreateFieldErrors] = useState<StockFormErrors>({});
+  const [isPending, setIsPending] = useState(false);
+
+  const { data: sectorSuggestions } = useSectorSuggestions();
+
+  // Re-initialise form state whenever the modal opens, seeding from initialValues
+  // when provided (e.g. opened from the Jobs page with a pre-filled ISIN/name).
+  useEffect(() => {
+    if (open) {
+      setNewStock(
+        initialValues
+          ? { ...EMPTY_STOCK, isin: initialValues.isin ?? "", name: initialValues.name ?? "" }
+          : EMPTY_STOCK
+      );
+      setCreateError(null);
+      setCreateFieldErrors({});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const isCreateValid =
     newStock.isin.trim().length === 12 &&
@@ -44,6 +67,7 @@ export function CreateStockModal({ open, onClose, tagSuggestions, onCreated }: P
     const errs = validateCreateStock(newStock);
     setCreateFieldErrors(errs);
     if (Object.keys(errs).length > 0) return;
+    setIsPending(true);
     try {
       await api.post("/stocks", {
         isin: newStock.isin.trim().toUpperCase(),
@@ -54,9 +78,12 @@ export function CreateStockModal({ open, onClose, tagSuggestions, onCreated }: P
         tags: newStock.tags,
       });
       handleClose();
+      toast.success("Unternehmen zur Watchlist hinzugefügt.");
       await onCreated();
     } catch (error) {
       setCreateError(extractApiError(error, "Unternehmen konnte nicht angelegt werden."));
+    } finally {
+      setIsPending(false);
     }
   }
 
@@ -75,9 +102,9 @@ export function CreateStockModal({ open, onClose, tagSuggestions, onCreated }: P
             type="submit"
             form="create-stock-form"
             className="btn-primary"
-            disabled={!isCreateValid}
+            disabled={!isCreateValid || isPending}
           >
-            Speichern
+            {isPending ? "Speichern…" : "Speichern"}
           </button>
         </>
       }
@@ -89,6 +116,8 @@ export function CreateStockModal({ open, onClose, tagSuggestions, onCreated }: P
         onSubmit={createStock}
         errors={createFieldErrors}
         tagSuggestions={tagSuggestions}
+        sectorSuggestions={sectorSuggestions ?? []}
+        isPending={isPending}
       />
       {createError && (
         <p className="form-banner-error" role="alert">

@@ -1,5 +1,7 @@
 import { FormEvent, useMemo } from "react";
 import { TagInput } from "./TagInput";
+import { SectorSuggestion } from "../hooks/useStockQueries";
+import { SectorAutocomplete } from "./SectorAutocomplete";
 
 export interface StockFormValues {
   isin: string;
@@ -19,6 +21,8 @@ interface CreateStockFormProps {
   onSubmit: (e: FormEvent) => void;
   errors?: StockFormErrors;
   tagSuggestions?: { name: string; count?: number }[];
+  sectorSuggestions?: SectorSuggestion[];
+  isPending?: boolean;
 }
 
 const KNOWN_CURRENCIES = ["EUR", "USD", "CHF", "GBP", "JPY"] as const;
@@ -33,6 +37,8 @@ export function CreateStockForm({
   onSubmit,
   errors = {},
   tagSuggestions = [],
+  sectorSuggestions,
+  isPending,
 }: CreateStockFormProps) {
   const set = <K extends keyof StockFormValues>(key: K, v: StockFormValues[K]) =>
     onChange({ ...values, [key]: v });
@@ -94,10 +100,12 @@ export function CreateStockForm({
 
         <div className="field">
           <label htmlFor={`${formId}-sector`}>Sektor</label>
-          <input
+          <SectorAutocomplete
             id={`${formId}-sector`}
             value={values.sector}
-            onChange={(e) => set("sector", e.target.value)}
+            onChange={(v) => set("sector", v)}
+            suggestions={sectorSuggestions}
+            disabled={isPending}
             placeholder="z. B. Industrie, Tech, Healthcare"
           />
         </div>

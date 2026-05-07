@@ -230,4 +230,164 @@ describe("JobsPage", () => {
     expect(screen.getByText("Siemens Karriere")).toBeInTheDocument();
     expect(screen.queryByText("BASF Karriere")).not.toBeInTheDocument();
   });
+
+  // --- New tests for watchlist-add feature ---
+
+  it("shows a watchlist-add button for ISINs not in the watchlist", async () => {
+    vi.mocked(api.get).mockImplementation(
+      buildResponder({
+        "/job-sources": [baseSource],
+        "/run-logs/current": null,
+        // stocks endpoint returns empty list → ISIN not in watchlist
+        "/stocks": [],
+      })
+    );
+
+    renderJobsPage();
+
+    await waitFor(() =>
+      expect(screen.getByText("Siemens Karriere")).toBeInTheDocument()
+    );
+
+    // Should show a button with the ISIN (not a link)
+    const addBtn = screen.getByRole("button", {
+      name: new RegExp(`${baseSource.isin}.*zur Watchlist hinzufügen`, "i"),
+    });
+    expect(addBtn).toBeInTheDocument();
+    expect(addBtn).not.toBeDisabled();
+  });
+
+  it("shows a link (not a button) for ISINs already in the watchlist", async () => {
+    vi.mocked(api.get).mockImplementation(
+      buildResponder({
+        "/job-sources": [baseSource],
+        "/run-logs/current": null,
+        // stocks endpoint returns the matching stock
+        "/stocks": [
+          {
+            isin: baseSource.isin,
+            name: "Siemens AG",
+            sector: null,
+            currency: null,
+            reasoning: null,
+            tranches: 0,
+            current_price: null,
+            day_change_pct: null,
+            last_updated: null,
+            last_status: null,
+            pe_forward: null,
+            pe_min_5y: null,
+            pe_max_5y: null,
+            pe_avg_5y: null,
+            dividend_yield_current: null,
+            dividend_yield_avg_5y: null,
+            analyst_target_1y: null,
+            market_cap: null,
+            equity_ratio: null,
+            debt_ratio: null,
+            revenue_growth: null,
+            missing_metrics: [],
+            analyst_target_distance_pct: null,
+            invested_capital_eur: 0,
+            tags: [],
+            latest_ai_runs: {},
+          },
+        ],
+      })
+    );
+
+    renderJobsPage();
+
+    await waitFor(() =>
+      expect(screen.getByText("Siemens Karriere")).toBeInTheDocument()
+    );
+
+    // Should show a link, not a watchlist-add button
+    const isinLink = screen.getByRole("link", { name: baseSource.isin! });
+    expect(isinLink).toBeInTheDocument();
+    expect(isinLink).toHaveAttribute("href", `/stocks/${baseSource.isin}`);
+    expect(
+      screen.queryByRole("button", {
+        name: new RegExp(`${baseSource.isin}.*zur Watchlist hinzufügen`, "i"),
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows no button or link for sources without an ISIN", async () => {
+    const noIsinSource: JobSource = { ...baseSource, id: 3, isin: null, name: "Kein ISIN" };
+    vi.mocked(api.get).mockImplementation(
+      buildResponder({
+        "/job-sources": [noIsinSource],
+        "/run-logs/current": null,
+        "/stocks": [],
+      })
+    );
+
+    renderJobsPage();
+
+    await waitFor(() =>
+      expect(screen.getByText("Kein ISIN")).toBeInTheDocument()
+    );
+
+    // The ISIN cell should show the dash placeholder — use getAllByText since
+    // the Lauf-Status column also renders "–" for this row.
+    const dashes = screen.getAllByText("–");
+    expect(dashes.length).toBeGreaterThanOrEqual(1);
+    // No watchlist-add button
+    expect(
+      screen.queryByRole("button", { name: /zur Watchlist hinzufügen/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("watchlist-add button remains clickable while a jobs refresh is running", async () => {
+    vi.mocked(api.get).mockImplementation(
+      buildResponder({
+        "/job-sources": [baseSource],
+        "/run-logs/current": makeRun(),
+        "/run-logs/99/jobs": [],
+        "/stocks": [],
+      })
+    );
+
+    renderJobsPage();
+
+    await waitFor(() =>
+      expect(screen.getByText("Siemens Karriere")).toBeInTheDocument()
+    );
+
+    const addBtn = screen.getByRole("button", {
+      name: new RegExp(`${baseSource.isin}.*zur Watchlist hinzufügen`, "i"),
+    });
+    expect(addBtn).not.toBeDisabled();
+  });
+
+  it("opens the CreateStockModal with pre-filled values when the add button is clicked", async () => {
+    const user = (await import("@testing-library/user-event")).default.setup();
+
+    vi.mocked(api.get).mockImplementation(
+      buildResponder({
+        "/job-sources": [baseSource],
+        "/run-logs/current": null,
+        "/stocks": [],
+      })
+    );
+
+    renderJobsPage();
+
+    await waitFor(() =>
+      expect(screen.getByText("Siemens Karriere")).toBeInTheDocument()
+    );
+
+    const addBtn = screen.getByRole("button", {
+      name: new RegExp(`${baseSource.isin}.*zur Watchlist hinzufügen`, "i"),
+    });
+    await user.click(addBtn);
+
+    // Modal should open
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    // ISIN and name should be pre-filled
+    expect((screen.getByLabelText(/isin/i) as HTMLInputElement).value).toBe(baseSource.isin);
+    expect((screen.getByLabelText(/name/i) as HTMLInputElement).value).toBe(baseSource.name);
+  });
 });

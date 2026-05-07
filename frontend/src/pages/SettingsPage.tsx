@@ -1,5 +1,6 @@
 import { Spinner } from "../components/Spinner";
 import { AiProviderCard } from "../components/settings/AiProviderCard";
+import { ChangePasswordCard } from "../components/settings/ChangePasswordCard";
 import { ColorThresholdsCard } from "../components/settings/ColorThresholdsCard";
 import { ExportCard } from "../components/settings/ExportCard";
 import { JobsScheduleCard } from "../components/settings/JobsScheduleCard";
@@ -69,6 +70,7 @@ export function SettingsPage() {
           onUploadJobHistory={(file) => void s.uploadJobHistory(file)}
         />
         <ColorThresholdsCard thresholds={s.thresholds} onChange={s.setThresholds} />
+        <ChangePasswordCard />
       </div>
 
       <SettingsFooter

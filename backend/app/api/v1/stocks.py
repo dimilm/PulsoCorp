@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import csrf_guard, get_current_user, get_market_provider, require_admin
@@ -7,7 +8,7 @@ from app.models.job_source import JobSource
 from app.models.stock import Stock
 from app.providers.market.base import MarketProvider
 from app.schemas.job_source import JobsAggregateTrendPoint, StockJobsOut, StockJobsTrendOut
-from app.schemas.stock import HistoryResponse, StockCreate, StockOut, StockUpdate
+from app.schemas.stock import HistoryResponse, SectorSuggestion, StockCreate, StockOut, StockUpdate
 from app.services import jobs_trend_service
 from app.services.history_service import HistoryService
 from app.services.scheduler_service import start_single_refresh_background
@@ -45,6 +46,21 @@ def get_stocks(
 def post_stock(payload: StockCreate, _: dict = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     stock = create_stock(db, payload)
     return to_stock_out(db, stock)
+
+
+@router.get("/sectors", response_model=list[SectorSuggestion])
+def get_sectors(
+    _: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    rows = (
+        db.query(Stock.sector, func.count(Stock.isin).label("count"))
+        .filter(Stock.sector.isnot(None), Stock.sector != "")
+        .group_by(Stock.sector)
+        .order_by(Stock.sector.asc())
+        .all()
+    )
+    return [{"name": row.sector, "count": row.count} for row in rows]
 
 
 @router.get("/{isin}", response_model=StockOut)

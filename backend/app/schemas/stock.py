@@ -112,6 +112,11 @@ class StockOut(StockBase):
     latest_ai_runs: dict[str, AILatestRun] = Field(default_factory=dict)
 
 
+class SectorSuggestion(BaseModel):
+    name: str
+    count: int
+
+
 class HistoryPoint(BaseModel):
     date: str
     open: float | None = None

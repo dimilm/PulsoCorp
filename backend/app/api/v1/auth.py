@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, new_csrf_token
+from app.api.deps import csrf_guard, get_current_user, new_csrf_token
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.core.security import create_access_token, verify_password
+from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.auth import LoginRequest, LoginResponse, MeResponse
+from app.schemas.auth import ChangePasswordRequest, LoginRequest, LoginResponse, MeResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -83,3 +83,28 @@ def me(user: User = Depends(get_current_user)) -> MeResponse:
     # any in-flight requests on other tabs that already captured the previous
     # token. Token rotation is exclusive to /login and /refresh.
     return MeResponse(username=user.username, role=user.role)
+
+
+@router.post("/change-password")
+@limiter.limit("5/minute")
+def change_password(
+    request: Request,
+    payload: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(csrf_guard),
+) -> dict:
+    # 1. Verify current password
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+
+    # 2. Ensure new password differs from current
+    if payload.new_password == payload.current_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New password must differ from the current password")
+
+    # 3. Hash and persist new password
+    current_user.password_hash = hash_password(payload.new_password)
+    db.commit()
+
+    # 4. Return success
+    return {"ok": True}
