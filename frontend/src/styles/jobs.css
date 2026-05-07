@@ -9,10 +9,10 @@
 }
 
 .job-source-row {
-  border: 1px solid var(--border-color, #e5e7eb);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
   padding: 12px;
-  background: var(--card-bg, #fff);
+  background: var(--bg-surface);
 }
 
 .job-source-row-head {
@@ -33,7 +33,7 @@
 
 .job-source-meta {
   font-size: 12px;
-  color: var(--muted-fg, #6b7280);
+  color: var(--text-secondary);
   margin-top: 4px;
 }
 
@@ -51,7 +51,7 @@
 
 .job-source-stat-label {
   font-size: 11px;
-  color: var(--muted-fg, #6b7280);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -96,7 +96,7 @@
 .jobs-trend-chart {
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .jobs-trend-chart-label {

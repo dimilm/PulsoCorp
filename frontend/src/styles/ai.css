@@ -227,7 +227,7 @@
 
 .ai-peer-empty {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -236,23 +236,17 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
-  background: #f8fafc;
-  border: 1px dashed #cbd5f5;
+  background: var(--bg-surface-2);
+  border: 1px dashed var(--border-strong);
   border-radius: 8px;
 }
 
 .ai-peer-label {
   font-size: 11px;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.ai-peer-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 .ai-peer-chip {
@@ -260,11 +254,11 @@
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-default);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--bg-surface);
   font-size: 12px;
-  color: #1e293b;
+  color: var(--text-primary);
   cursor: pointer;
 }
 
@@ -275,7 +269,7 @@
 .ai-peer-chip-isin {
   font-family: ui-monospace, SFMono-Regular, "Menlo", monospace;
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .ai-prompt-text {
@@ -298,7 +292,7 @@
   gap: 24px;
   flex-wrap: wrap;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border-default);
   margin-bottom: 12px;
 }
 
@@ -307,34 +301,34 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #64748b;
+  color: var(--text-secondary);
   margin-bottom: 2px;
 }
 
 .ai-result-stat-value {
   font-size: 18px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-strong);
 }
 
 .ai-result-stat-isin {
   font-size: 16px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-strong);
 }
 
 .ai-result-stat-sub {
   display: block;
   font-family: ui-monospace, SFMono-Regular, "Menlo", monospace;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
 .ai-result-stat-max {
   font-size: 12px;
   font-weight: 400;
-  color: #94a3b8;
+  color: var(--text-muted);
   margin-left: 2px;
 }
 
@@ -342,15 +336,15 @@
   margin: 0 0 12px;
   font-size: 13px;
   line-height: 1.5;
-  color: #334155;
+  color: var(--text-primary);
 }
 
 .ai-result-error {
   padding: 12px 14px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
   border-radius: 8px;
-  color: #991b1b;
+  color: var(--danger);
   font-size: 13px;
 }
 
@@ -402,15 +396,15 @@
 .ai-result-table th,
 .ai-result-table td {
   padding: 8px 10px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border-default);
   text-align: left;
   vertical-align: top;
 }
 
 .ai-result-table th {
   font-weight: 600;
-  color: #475569;
-  background: #f8fafc;
+  color: var(--text-secondary);
+  background: var(--bg-surface-2);
 }
 
 .ai-rating {
@@ -448,23 +442,23 @@
   gap: 10px;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
 }
 
 .ai-scenario-bull {
   border-color: #bbf7d0;
-  background: linear-gradient(180deg, #f0fdf4, #ffffff);
+  background: linear-gradient(180deg, rgba(240, 253, 244, 0.6), var(--bg-surface));
 }
 
 .ai-scenario-base {
   border-color: #cbd5f5;
-  background: linear-gradient(180deg, #eff6ff, #ffffff);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.6), var(--bg-surface));
 }
 
 .ai-scenario-bear {
   border-color: #fecaca;
-  background: linear-gradient(180deg, #fef2f2, #ffffff);
+  background: linear-gradient(180deg, rgba(254, 242, 242, 0.6), var(--bg-surface));
 }
 
 .ai-scenario-card-head {
@@ -478,13 +472,13 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #475569;
+  color: var(--text-secondary);
 }
 
 .ai-scenario-prob {
   font-size: 13px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--text-primary);
 }
 
 .ai-scenario-target {
@@ -498,7 +492,7 @@
   padding-left: 18px;
   font-size: 12px;
   line-height: 1.5;
-  color: #334155;
+  color: var(--text-primary);
 }
 
 .ai-scenario-assumptions li {
@@ -541,23 +535,23 @@
 .ai-redflag-item {
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
   border-left-width: 4px;
 }
 
 .ai-redflag-item.ai-redflag-low {
-  background: #ffffff;
+  background: var(--bg-surface);
   border-left-color: #16a34a;
 }
 
 .ai-redflag-item.ai-redflag-med {
-  background: #ffffff;
+  background: var(--bg-surface);
   border-left-color: #f59e0b;
 }
 
 .ai-redflag-item.ai-redflag-high {
-  background: #ffffff;
+  background: var(--bg-surface);
   border-left-color: #dc2626;
 }
 
@@ -572,7 +566,7 @@
 .ai-redflag-title {
   font-size: 13px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-strong);
 }
 
 .ai-redflag-severity-pill {
@@ -586,8 +580,8 @@
 
 .ai-redflag-category {
   font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
   padding: 2px 6px;
   border-radius: 999px;
 }
@@ -596,13 +590,13 @@
   margin: 0 0 4px;
   font-size: 12px;
   line-height: 1.5;
-  color: #334155;
+  color: var(--text-primary);
 }
 
 .ai-redflag-evidence {
   margin: 0;
   font-size: 11px;
-  color: #64748b;
+  color: var(--text-secondary);
 }
 
 .ai-tournament-bracket {
@@ -621,7 +615,7 @@
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -633,9 +627,9 @@
 }
 
 .ai-tournament-match {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-default);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--bg-surface);
   padding: 8px 10px;
 }
 
@@ -657,10 +651,10 @@
   align-items: baseline;
   gap: 6px;
   font-size: 12px;
-  color: #475569;
+  color: var(--text-secondary);
   padding: 2px 8px;
   border-radius: 4px;
-  background: #f1f5f9;
+  background: var(--bg-subtle);
   min-width: 0;
 }
 
@@ -675,7 +669,7 @@
 .ai-tournament-side-isin {
   font-family: ui-monospace, SFMono-Regular, "Menlo", monospace;
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--text-muted);
   letter-spacing: 0.02em;
 }
 
@@ -694,7 +688,7 @@
 
 .ai-tournament-vs {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -709,20 +703,20 @@
 .ai-tournament-scores th,
 .ai-tournament-scores td {
   padding: 4px 6px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border-subtle);
   text-align: left;
 }
 
 .ai-tournament-scores th {
   font-weight: 600;
-  color: #475569;
+  color: var(--text-secondary);
 }
 
 .ai-tournament-rationale {
   margin: 8px 0 0;
   font-size: 12px;
   line-height: 1.5;
-  color: #334155;
+  color: var(--text-primary);
 }
 
 /* AI summary pills shown in the watchlist table.
@@ -748,8 +742,8 @@
   font-weight: 600;
   text-decoration: none;
   line-height: 1.35;
-  background: #f1f5f9;
-  color: #1e293b;
+  background: var(--bg-subtle);
+  color: var(--text-primary);
   border: 1px solid transparent;
   transition: filter 120ms ease, transform 120ms ease;
 }
@@ -777,7 +771,7 @@
 }
 
 .ai-pill-empty {
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -852,9 +846,9 @@
   background: #d97706;
 }
 .ai-pill-tournament-loser {
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
 }
 .ai-pill-tournament-loser .ai-pill-short {
-  background: #64748b;
+  background: var(--text-muted);
 }

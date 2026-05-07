@@ -21,6 +21,7 @@ th > button {
   font-weight: 600;
   cursor: pointer;
   padding: 0;
+  color: inherit;
 }
 
 button {
@@ -76,7 +77,7 @@ td.actions-cell button {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--bg-overlay);
   pointer-events: none;
   z-index: 1;
 }
@@ -89,11 +90,11 @@ td.actions-cell button {
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid #e5e7eb;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
   border-radius: 999px;
-  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
-  color: #111827;
+  box-shadow: var(--shadow-lg);
+  color: var(--text-strong);
   font-size: 13px;
   font-weight: 500;
   pointer-events: auto;
@@ -110,7 +111,7 @@ td.actions-cell button {
 }
 
 .delta-down {
-  color: var(--danger-fg, #dc2626);
+  color: var(--danger);
 }
 
 /* Jobs table */
@@ -123,18 +124,18 @@ td.actions-cell button {
 .jobs-table td {
   padding: 8px 12px;
   text-align: left;
-  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  border-bottom: 1px solid var(--border-default);
   font-size: 13px;
 }
 
 .jobs-table th {
   font-weight: 600;
-  color: var(--muted-fg, #6b7280);
+  color: var(--text-secondary);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .jobs-table tr:hover td {
-  background: var(--row-hover-bg, #f9fafb);
+  background: var(--bg-surface-2);
 }

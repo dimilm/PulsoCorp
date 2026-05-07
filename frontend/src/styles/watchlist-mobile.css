@@ -81,8 +81,8 @@
 .wl-card-isin {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
-  background: #eef2ff;
-  color: #3730a3;
+  background: var(--accent-soft-bg);
+  color: var(--accent);
   padding: 2px 6px;
   border-radius: 999px;
   letter-spacing: 0.03em;
@@ -177,8 +177,8 @@
   border-radius: 4px;
 }
 
-.wl-card-jobs-delta.delta-up   { background: #dcfce7; color: #15803d; }
-.wl-card-jobs-delta.delta-down { background: #fee2e2; color: #b91c1c; }
+.wl-card-jobs-delta.delta-up   { background: #dcfce7; color: #14532d; }
+.wl-card-jobs-delta.delta-down { background: #fecaca; color: #7f1d1d; }
 
 /* Footer */
 .wl-card-footer {
