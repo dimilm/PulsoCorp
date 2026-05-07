@@ -176,7 +176,11 @@ export default function WatchlistTable({
               {(() => {
                 const trendPoints = trendsByIsin?.[s.isin];
                 if (!trendPoints || trendPoints.length < 2) return "–";
-                return <JobsSparkline points={trendPoints} />;
+                return (
+                  <span className="jobs-sparkline-cell">
+                    <JobsSparkline points={trendPoints} />
+                  </span>
+                );
               })()}
             </td>
             <td className="num-cell">
