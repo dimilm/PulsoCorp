@@ -51,25 +51,46 @@
 .run-summary-running {
   background: #eff6ff;
   border-color: #bfdbfe;
+  color: #1e3a8a;
 }
 
 .run-summary-done {
   background: #ecfdf5;
   border-color: #a7f3d0;
+  color: #14532d;
 }
 
 .run-summary-error {
   background: #fef2f2;
   border-color: #fecaca;
+  color: #7f1d1d;
 }
 
 .run-summary-finished {
-  background: #f9fafb;
+  background: var(--bg-surface-2);
+  color: var(--text-primary);
 }
 
 .run-summary-cancelled {
   background: #fff7ed;
   border-color: #fed7aa;
+  color: #7c2d12;
+}
+
+/* Inside a coloured tile, label and value inherit the tile's text colour */
+.run-summary-running .run-summary-label,
+.run-summary-done .run-summary-label,
+.run-summary-error .run-summary-label,
+.run-summary-cancelled .run-summary-label {
+  color: currentColor;
+  opacity: 0.7;
+}
+
+.run-summary-running .run-summary-value,
+.run-summary-done .run-summary-value,
+.run-summary-error .run-summary-value,
+.run-summary-cancelled .run-summary-value {
+  color: currentColor;
 }
 
 .run-progress-bar {

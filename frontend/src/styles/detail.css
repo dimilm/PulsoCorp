@@ -385,6 +385,7 @@
 .run-summary-item.kpi-highlight {
   background: #ecfeff;
   border-color: #a5f3fc;
+  color: #155e75;
 }
 
 /* Traffic-light variants for ratio KPIs (e.g. Eigenkapitalquote).
@@ -392,16 +393,35 @@
 .run-summary-item.kpi-good {
   background: #dcfce7;
   border-color: #86efac;
+  color: #14532d;
 }
 
 .run-summary-item.kpi-warn {
   background: #fef9c3;
   border-color: #fde047;
+  color: #713f12;
 }
 
 .run-summary-item.kpi-bad {
   background: #fecaca;
   border-color: #fca5a5;
+  color: #7f1d1d;
+}
+
+/* Inside a coloured KPI tile, label and value inherit the tile's text colour */
+.run-summary-item.kpi-highlight .run-summary-label,
+.run-summary-item.kpi-good .run-summary-label,
+.run-summary-item.kpi-warn .run-summary-label,
+.run-summary-item.kpi-bad .run-summary-label {
+  color: currentColor;
+  opacity: 0.7;
+}
+
+.run-summary-item.kpi-highlight .run-summary-value,
+.run-summary-item.kpi-good .run-summary-value,
+.run-summary-item.kpi-warn .run-summary-value,
+.run-summary-item.kpi-bad .run-summary-value {
+  color: currentColor;
 }
 
 .kpi-badge-wrap {

@@ -41,12 +41,6 @@ interface Props {
   trendsByIsin?: Record<string, JobsTrendPoint[]>;
 }
 
-function formatJobsDelta(delta: number | null | undefined): string {
-  if (delta == null) return "";
-  if (delta === 0) return " (0)";
-  return delta > 0 ? ` (+${delta})` : ` (${delta})`;
-}
-
 function buildJobsCellTitle(
   latest: number | null,
   delta7d: number | null,
@@ -123,9 +117,8 @@ export default function WatchlistTable({
           <SortHeader label="Tagesänd. (%)" keyName="day_change_pct" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="num-cell" />
           <SortHeader label="Kursziel (%)" keyName="analyst_target_distance_pct" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="num-cell" />
           <SortHeader label="Div. (%)" keyName="dividend_yield_current" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="num-cell" />
-          <th className="num-cell" title="Aktuell offene Stellen · 90-Tage-Trend">
-            Stellen
-          </th>
+          <th className="num-cell">Trend</th>
+          <th className="num-cell">Stellen</th>
           <SortHeader label="Status" keyName="last_status" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
           <th>KI</th>
           <th className="actions-header" aria-label="Aktionen" />
@@ -181,10 +174,16 @@ export default function WatchlistTable({
             </td>
             <td className="num-cell">
               {(() => {
-                const aggregate = jobsByIsin?.[s.isin];
-                if (!aggregate || aggregate.latest == null) return "-";
                 const trendPoints = trendsByIsin?.[s.isin];
-                const hasSparkline = trendPoints && trendPoints.length >= 2;
+                if (!trendPoints || trendPoints.length < 2) return "–";
+                return <JobsSparkline points={trendPoints} />;
+              })()}
+            </td>
+            <td className="num-cell">
+              {(() => {
+                const aggregate = jobsByIsin?.[s.isin];
+                if (!aggregate || aggregate.latest == null) return "–";
+                const trendPoints = trendsByIsin?.[s.isin];
                 const title = buildJobsCellTitle(
                   aggregate.latest,
                   aggregate.delta_7d,
@@ -192,18 +191,14 @@ export default function WatchlistTable({
                 );
                 return (
                   <span className="jobs-sparkline-cell" title={title}>
-                    {hasSparkline ? (
-                      <JobsSparkline points={trendPoints} />
-                    ) : null}
                     <span className="jobs-sparkline-cell-value">
                       {aggregate.latest}
                       {aggregate.delta_7d != null && aggregate.delta_7d !== 0 ? (
                         <span
-                          className={
-                            aggregate.delta_7d > 0 ? "delta-up" : "delta-down"
-                          }
+                          className={aggregate.delta_7d > 0 ? "delta-up" : "delta-down"}
+                          style={{ marginLeft: "0.25em" }}
                         >
-                          {formatJobsDelta(aggregate.delta_7d)}
+                          {aggregate.delta_7d > 0 ? "↑" : "↓"}
                         </span>
                       ) : null}
                     </span>

@@ -69,6 +69,63 @@ function renderTable(props: Partial<Parameters<typeof WatchlistTable>[0]>) {
   );
 }
 
+describe("WatchlistTable column structure", () => {
+  it("renders 14 <th> elements in the header row", () => {
+    const { container } = renderTable({});
+    const headerRow = container.querySelector("thead tr");
+    expect(headerRow).not.toBeNull();
+    const headers = headerRow!.querySelectorAll("th");
+    expect(headers).toHaveLength(14);
+  });
+
+  it("renders a 'Trend' header and a 'Stellen' header", () => {
+    renderTable({});
+    expect(screen.getByText("Trend")).toBeInTheDocument();
+    expect(screen.getByText("Stellen")).toBeInTheDocument();
+  });
+
+  it("positions 'Trend' immediately to the left of 'Stellen'", () => {
+    const { container } = renderTable({});
+    const headerRow = container.querySelector("thead tr");
+    const headers = Array.from(headerRow!.querySelectorAll("th"));
+    const trendIndex = headers.findIndex((th) => th.textContent === "Trend");
+    const stellenIndex = headers.findIndex((th) => th.textContent === "Stellen");
+    expect(trendIndex).toBeGreaterThanOrEqual(0);
+    expect(stellenIndex).toBeGreaterThanOrEqual(0);
+    expect(trendIndex).toBe(stellenIndex - 1);
+  });
+
+  it("neither 'Trend' nor 'Stellen' <th> contains a <button>", () => {
+    const { container } = renderTable({});
+    const headers = Array.from(container.querySelectorAll("thead th"));
+    const trendTh = headers.find((th) => th.textContent === "Trend");
+    const stellenTh = headers.find((th) => th.textContent === "Stellen");
+    expect(trendTh).toBeDefined();
+    expect(stellenTh).toBeDefined();
+    expect(trendTh!.querySelector("button")).toBeNull();
+    expect(stellenTh!.querySelector("button")).toBeNull();
+  });
+});
+
+/**
+ * Helper: returns the Trend <td> and Stellen <td> for the first data row.
+ *
+ * The header row has 14 <th> elements. We locate the "Trend" and "Stellen"
+ * headers to derive their column indices, then pick the matching <td> cells
+ * from the first body row.
+ */
+function getTrendAndStellenCells(container: HTMLElement) {
+  const headers = Array.from(container.querySelectorAll("thead th"));
+  const trendIdx = headers.findIndex((th) => th.textContent === "Trend");
+  const stellenIdx = headers.findIndex((th) => th.textContent === "Stellen");
+
+  const cells = Array.from(container.querySelectorAll("tbody tr:first-child td"));
+  return {
+    trendCell: cells[trendIdx] as HTMLElement,
+    stellenCell: cells[stellenIdx] as HTMLElement,
+  };
+}
+
 describe("WatchlistTable jobs sparkline cell", () => {
   it("always renders the Stellen column header (no toggle anymore)", () => {
     renderTable({});
@@ -78,7 +135,7 @@ describe("WatchlistTable jobs sparkline cell", () => {
   });
 
   it("renders the sparkline + latest count when ≥2 trend points exist", () => {
-    renderTable({
+    const { container } = renderTable({
       jobsByIsin: { DE0001: { latest: 42, delta_7d: 3 } },
       trendsByIsin: {
         DE0001: [
@@ -89,44 +146,155 @@ describe("WatchlistTable jobs sparkline cell", () => {
       },
     });
 
-    const sparkline = screen.getByTestId("jobs-sparkline-stub");
+    const { trendCell, stellenCell } = getTrendAndStellenCells(container);
+
+    // Sparkline stub is inside the Trend <td>.
+    const sparkline = within(trendCell).getByTestId("jobs-sparkline-stub");
     expect(sparkline).toBeInTheDocument();
     expect(sparkline.dataset.points).toBe("3");
 
-    // Tooltip surfaces latest, Δ7T and 90T min/max.
-    const cell = sparkline.closest(".jobs-sparkline-cell") as HTMLElement;
-    expect(cell).not.toBeNull();
-    expect(cell.getAttribute("title")).toContain("Aktuell: 42");
-    expect(cell.getAttribute("title")).toContain("Δ 7T: +3");
-    expect(cell.getAttribute("title")).toContain("90T min/max: 30/42");
+    // Sparkline stub is absent from the Stellen <td>.
+    expect(within(stellenCell).queryByTestId("jobs-sparkline-stub")).not.toBeInTheDocument();
 
-    // Latest count remains visible alongside the sparkline.
-    expect(within(cell).getByText("42")).toBeInTheDocument();
-    expect(within(cell).getByText(/\+3/)).toBeInTheDocument();
+    // Tooltip on the Stellen cell surfaces latest, Δ7T and 90T min/max.
+    const tooltipSpan = stellenCell.querySelector(".jobs-sparkline-cell") as HTMLElement;
+    expect(tooltipSpan).not.toBeNull();
+    expect(tooltipSpan.getAttribute("title")).toContain("Aktuell: 42");
+    expect(tooltipSpan.getAttribute("title")).toContain("Δ 7T: +3");
+    expect(tooltipSpan.getAttribute("title")).toContain("90T min/max: 30/42");
+
+    // Latest count is visible in the Stellen cell.
+    expect(within(stellenCell).getByText("42")).toBeInTheDocument();
   });
 
   it("falls back to count + Δ when fewer than 2 trend points are available", () => {
-    renderTable({
+    const { container } = renderTable({
       jobsByIsin: { DE0001: { latest: 42, delta_7d: -2 } },
       trendsByIsin: { DE0001: [{ date: "2026-05-01", count: 42 }] },
     });
 
+    const { trendCell, stellenCell } = getTrendAndStellenCells(container);
+
+    // No sparkline anywhere — insufficient trend points.
     expect(screen.queryByTestId("jobs-sparkline-stub")).not.toBeInTheDocument();
-    // The cell must still surface the textual count + delta in this
-    // degraded state so the column is never completely empty.
-    expect(screen.getByText("42")).toBeInTheDocument();
-    expect(screen.getByText(/-2/)).toBeInTheDocument();
+
+    // Trend cell shows the en-dash fallback.
+    expect(trendCell.textContent).toBe("–");
+
+    // Stellen cell still surfaces the numeric count.
+    expect(within(stellenCell).getByText("42")).toBeInTheDocument();
   });
 
   it("falls back to a dash when no aggregate is known for the row", () => {
-    renderTable({
+    const { container } = renderTable({
       jobsByIsin: { OTHER: { latest: 1, delta_7d: 0 } },
       trendsByIsin: {},
     });
-    // Row's ISIN is not represented in the aggregate map: cell shows "-".
-    // (The dash sits inside a <td> together with several other cells; we
-    // assert via getAllByText since "-" repeats elsewhere on the row.)
-    expect(screen.getAllByText("-").length).toBeGreaterThan(0);
+
+    const { trendCell, stellenCell } = getTrendAndStellenCells(container);
+
+    // Both Trend and Stellen cells show the en-dash fallback.
+    expect(trendCell.textContent).toBe("–");
+    expect(stellenCell.textContent).toBe("–");
+
     expect(screen.queryByTestId("jobs-sparkline-stub")).not.toBeInTheDocument();
+  });
+});
+
+describe("WatchlistTable Stellen cell arrow behaviour", () => {
+  // Requirements: 3.3, 4.1 — positive delta renders up-arrow with delta-up class
+  it("positive delta — span.delta-up with text '↑' present in Stellen cell", () => {
+    const { container } = renderTable({
+      jobsByIsin: { DE0001: { latest: 10, delta_7d: 5 } },
+    });
+    const { stellenCell } = getTrendAndStellenCells(container);
+    const arrow = stellenCell.querySelector(".delta-up");
+    expect(arrow).not.toBeNull();
+    expect(arrow!.textContent).toBe("↑");
+    expect(stellenCell.querySelector(".delta-down")).toBeNull();
+  });
+
+  // Requirements: 3.4, 4.1 — negative delta renders down-arrow with delta-down class
+  it("negative delta — span.delta-down with text '↓' present in Stellen cell", () => {
+    const { container } = renderTable({
+      jobsByIsin: { DE0001: { latest: 10, delta_7d: -3 } },
+    });
+    const { stellenCell } = getTrendAndStellenCells(container);
+    const arrow = stellenCell.querySelector(".delta-down");
+    expect(arrow).not.toBeNull();
+    expect(arrow!.textContent).toBe("↓");
+    expect(stellenCell.querySelector(".delta-up")).toBeNull();
+  });
+
+  // Requirements: 3.5, 4.5 — zero delta renders no arrow span
+  it("zero delta — no arrow span in Stellen cell", () => {
+    const { container } = renderTable({
+      jobsByIsin: { DE0001: { latest: 10, delta_7d: 0 } },
+    });
+    const { stellenCell } = getTrendAndStellenCells(container);
+    expect(stellenCell.querySelector(".delta-up")).toBeNull();
+    expect(stellenCell.querySelector(".delta-down")).toBeNull();
+  });
+
+  // Requirements: 3.5, 4.5 — null delta renders no arrow span
+  it("null delta — no arrow span in Stellen cell", () => {
+    const { container } = renderTable({
+      jobsByIsin: { DE0001: { latest: 10, delta_7d: null } },
+    });
+    const { stellenCell } = getTrendAndStellenCells(container);
+    expect(stellenCell.querySelector(".delta-up")).toBeNull();
+    expect(stellenCell.querySelector(".delta-down")).toBeNull();
+  });
+
+  // Requirements: 3.2, 5.3 — null latest renders "–" and no arrow span
+  it("null latest — '–' in Stellen cell, no arrow span", () => {
+    const { container } = renderTable({
+      jobsByIsin: { DE0001: { latest: null, delta_7d: 5 } },
+    });
+    const { stellenCell } = getTrendAndStellenCells(container);
+    expect(stellenCell.textContent).toBe("–");
+    expect(stellenCell.querySelector(".delta-up")).toBeNull();
+    expect(stellenCell.querySelector(".delta-down")).toBeNull();
+  });
+
+  // Requirements: 4.2 — arrow span has margin-left: 0.25em inline style
+  it("arrow margin — arrow span has style containing 'margin-left: 0.25em'", () => {
+    const { container } = renderTable({
+      jobsByIsin: { DE0001: { latest: 10, delta_7d: 7 } },
+    });
+    const { stellenCell } = getTrendAndStellenCells(container);
+    const arrow = stellenCell.querySelector(".delta-up") as HTMLElement | null;
+    expect(arrow).not.toBeNull();
+    expect(arrow!.style.marginLeft).toBe("0.25em");
+  });
+
+  // Requirements: 3.7 — tooltip title contains "Aktuell:", "Δ 7T:", "90T min/max:" substrings
+  it("tooltip — title attribute on .jobs-sparkline-cell contains required substrings", () => {
+    const { container } = renderTable({
+      jobsByIsin: { DE0001: { latest: 20, delta_7d: 4 } },
+      trendsByIsin: {
+        DE0001: [
+          { date: "2026-03-01", count: 15 },
+          { date: "2026-05-01", count: 25 },
+        ],
+      },
+    });
+    const { stellenCell } = getTrendAndStellenCells(container);
+    const tooltipSpan = stellenCell.querySelector(".jobs-sparkline-cell") as HTMLElement | null;
+    expect(tooltipSpan).not.toBeNull();
+    const title = tooltipSpan!.getAttribute("title") ?? "";
+    expect(title).toContain("Aktuell:");
+    expect(title).toContain("Δ 7T:");
+    expect(title).toContain("90T min/max:");
+  });
+
+  // Requirements: 4.3, 4.4 — both Trend and Stellen <td> carry the num-cell class
+  it("num-cell classes — both Trend and Stellen <td> carry the num-cell class", () => {
+    const { container } = renderTable({
+      jobsByIsin: { DE0001: { latest: 10, delta_7d: 1 } },
+    });
+    const { trendCell, stellenCell } = getTrendAndStellenCells(container);
+    expect(trendCell.classList.contains("num-cell")).toBe(true);
+    expect(stellenCell.classList.contains("num-cell")).toBe(true);
   });
 });
